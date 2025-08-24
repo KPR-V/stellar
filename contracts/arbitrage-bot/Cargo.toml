@@ -1,0 +1,16 @@
+[package]
+name = "arbitrage-bot"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# Add rlib so other crates can link to it. Keep cdylib for deployment.
+name = "arbitrage_bot"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+shared-types = { workspace = true }
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

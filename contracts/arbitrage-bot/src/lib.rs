@@ -1,0 +1,1342 @@
+#![no_std]
+
+use soroban_sdk::{contract, contractimpl, Address, Env, Map, String, Symbol, Vec};
+
+// Module imports
+pub mod dex;
+pub mod reflector;
+// pub mod types;
+pub mod utils;
+pub use shared_types::*;
+pub use dex::{
+    StellarDEXClient, 
+    SwapResult, 
+    simulate_trade,
+    calculate_slippage_bps,  // ✅ Add this
+    estimate_gas_cost,  
+    // Don't import TradingVenue from dex - use the one from shared_types
+};
+pub use reflector::*;
+// pub use types::*;
+pub use utils::*;
+
+// Client for the RiskManager contract
+#[soroban_sdk::contractclient(name = "RiskManagerClient")]
+pub trait RiskManagerContract {
+    fn check_trade_risk(env: Env, trade_size: i128) -> Symbol;
+    fn update_daily_volume(env: Env, caller: Address, volume_delta: i128);
+}
+
+// Testnet Oracle Addresses
+const STELLAR_ORACLE_TESTNET: &str = "CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP";
+const FOREX_ORACLE_TESTNET: &str = "CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W";
+const CRYPTO_ORACLE_TESTNET: &str = "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63";
+
+#[contract]
+pub struct ArbitrageBot;
+
+#[contractimpl]
+impl ArbitrageBot {
+    // ===== INITIALIZATION & ADMINISTRATION =====
+
+    /// Initialize with testnet oracles (one-time setup)
+    pub fn initialize_testnet(
+        env: Env,
+        admin: Address,
+        config: ArbitrageConfig,
+        risk_manager: Address,
+    ) {
+        let forex_oracle = Address::from_string(&String::from_str(&env, FOREX_ORACLE_TESTNET));
+        let crypto_oracle = Address::from_string(&String::from_str(&env, CRYPTO_ORACLE_TESTNET));
+        let stellar_oracle = Address::from_string(&String::from_str(&env, STELLAR_ORACLE_TESTNET));
+
+        Self::initialize(
+            env,
+            admin,
+            config,
+            forex_oracle,
+            crypto_oracle,
+            stellar_oracle,
+            risk_manager,
+        );
+    }
+
+    /// Initialize the arbitrage bot with full configuration
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        config: ArbitrageConfig,
+        forex_oracle: Address,
+        crypto_oracle: Address,
+        stellar_oracle: Address,
+        risk_manager: Address,
+    ) {
+        if env
+            .storage()
+            .instance()
+            .has(&Symbol::new(&env, "initialized"))
+        {
+            panic!("Contract already initialized");
+        }
+
+        // Store all global configuration
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "admin"), &admin);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "config"), &config);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "forex_oracle"), &forex_oracle);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "crypto_oracle"), &crypto_oracle);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "stellar_oracle"), &stellar_oracle);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "risk_manager"), &risk_manager);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "initialized"), &true);
+
+        // Initialize global storage
+        let empty_pairs: Vec<EnhancedStablecoinPair> = Vec::new(&env);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "pairs"), &empty_pairs);
+
+        let empty_history: Vec<TradeExecution> = Vec::new(&env);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "trade_history"), &empty_history);
+
+        let empty_venues: Vec<TradingVenue> = Vec::new(&env);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "trading_venues"), &empty_venues);
+
+        // Initialize role-based access
+        let keepers: Vec<Address> = Vec::new(&env);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "keepers"), &keepers);
+    }
+
+    // ===== USER ACCOUNT MANAGEMENT =====
+
+    /// Initialize user account for individual resource management
+    pub fn initialize_user_account(
+        env: Env,
+        user: Address,
+        initial_config: ArbitrageConfig,
+        risk_limits: RiskLimits,
+    ) {
+        user.require_auth();
+
+        let profile_key = UserStorageKey::Profile(user.clone());
+
+        if env.storage().persistent().has(&profile_key) {
+            panic!("User already initialized");
+        }
+
+        let profile = UserProfile {
+            balances: Map::new(&env),
+            risk_limits,
+            trading_config: initial_config,
+            total_profit_loss: 0,
+            is_active: true,
+        };
+
+        env.storage().persistent().set(&profile_key, &profile);
+
+        let history_key = UserStorageKey::TradeHistory(user.clone());
+        let history = UserTradeHistory {
+            trades: Vec::new(&env),
+            daily_volume: 0,
+            success_count: 0,
+            last_trade_timestamp: 0,
+        };
+        env.storage().persistent().set(&history_key, &history);
+
+        env.events().publish(
+            (Symbol::new(&env, "user"), Symbol::new(&env, "registered")),
+            (user,),
+        );
+    }
+
+    /// User deposits funds into their personal trading account
+    pub fn deposit_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
+        user.require_auth();
+
+        let profile_key = UserStorageKey::Profile(user.clone());
+        let mut profile: UserProfile = env
+            .storage()
+            .persistent()
+            .get(&profile_key)
+            .expect("User not initialized");
+
+        let current_balance = profile.balances.get(token_address.clone()).unwrap_or(0);
+        profile
+            .balances
+            .set(token_address.clone(), current_balance + amount);
+
+        env.storage().persistent().set(&profile_key, &profile);
+
+        // Transfer tokens from user to contract
+        let token_client = TokenClient::new(&env, &token_address);
+        token_client.transfer(&user, &env.current_contract_address(), &amount);
+
+        env.events().publish(
+            (Symbol::new(&env, "user"), Symbol::new(&env, "deposit")),
+            (user, token_address, amount),
+        );
+    }
+
+    /// User withdraws funds from their personal trading account
+    pub fn withdraw_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
+        user.require_auth();
+
+        let profile_key = UserStorageKey::Profile(user.clone());
+        let mut profile: UserProfile = env
+            .storage()
+            .persistent()
+            .get(&profile_key)
+            .expect("User not initialized");
+
+        let current_balance = profile.balances.get(token_address.clone()).unwrap_or(0);
+        if current_balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        profile
+            .balances
+            .set(token_address.clone(), current_balance - amount);
+        env.storage().persistent().set(&profile_key, &profile);
+
+        // Transfer tokens from contract to user
+        let token_client = TokenClient::new(&env, &token_address);
+        token_client.transfer(&env.current_contract_address(), &user, &amount);
+
+        env.events().publish(
+            (Symbol::new(&env, "user"), Symbol::new(&env, "withdrawal")),
+            (user, token_address, amount),
+        );
+    }
+
+    /// Execute an arbitrage trade using a user's individual funds
+    pub fn execute_user_arbitrage(
+        env: Env,
+        user: Address,
+        opportunity: EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        venue_address: Address,
+    ) -> TradeExecution {
+        user.require_auth();
+
+        let profile_key = UserStorageKey::Profile(user.clone());
+        let mut profile: UserProfile = env
+            .storage()
+            .persistent()
+            .get(&profile_key)
+            .expect("User not initialized");
+
+        if !profile.is_active {
+            return Self::create_failed_execution(&env, &opportunity, "USER_INACTIVE");
+        }
+
+        if trade_amount > profile.risk_limits.max_position_size {
+            return Self::create_failed_execution(&env, &opportunity, "USER_POSITION_TOO_LARGE");
+        }
+
+        let token = &opportunity.base_opportunity.pair.stablecoin_address;
+        let user_balance = profile.balances.get(token.clone()).unwrap_or(0);
+        if user_balance < trade_amount {
+            return Self::create_failed_execution(&env, &opportunity, "INSUFFICIENT_USER_BALANCE");
+        }
+
+        let history_key = UserStorageKey::TradeHistory(user.clone());
+        let history: UserTradeHistory = env.storage().persistent().get(&history_key).unwrap();
+
+        if history.daily_volume + trade_amount > profile.risk_limits.max_daily_volume {
+            return Self::create_failed_execution(&env, &opportunity, "USER_DAILY_LIMIT_EXCEEDED");
+        }
+
+        if !profile.trading_config.enabled {
+            return Self::create_failed_execution(&env, &opportunity, "USER_BOT_DISABLED");
+        }
+
+        let simulation_result =
+            Self::simulate_arbitrage_trade(&env, &opportunity, trade_amount, &venue_address);
+
+        if let Some(sim) = simulation_result {
+            let slippage_bps = calculate_slippage_bps(
+                opportunity.base_opportunity.estimated_profit,
+                sim.amount_out - trade_amount,
+            );
+
+            if slippage_bps > profile.trading_config.slippage_tolerance_bps {
+                return Self::create_failed_execution(&env, &opportunity, "USER_SLIPPAGE_TOO_HIGH");
+            }
+        }
+
+        let execution =
+            Self::execute_trade_for_user(&env, &user, &opportunity, trade_amount, &venue_address);
+
+        if execution.status == Symbol::new(&env, "SUCCESS") {
+            let new_balance = user_balance - trade_amount + execution.actual_profit;
+            profile.balances.set(token.clone(), new_balance);
+            profile.total_profit_loss += execution.actual_profit;
+        }
+
+        env.storage().persistent().set(&profile_key, &profile);
+
+        Self::update_user_trade_history(&env, &user, &execution);
+
+        execution
+    }
+
+    /// Get a specific user's performance metrics
+    pub fn get_user_performance_metrics(env: Env, user: Address, days: u32) -> PerformanceMetrics {
+        let history_key = UserStorageKey::TradeHistory(user);
+        let history: UserTradeHistory = env
+            .storage()
+            .persistent()
+            .get(&history_key)
+            .unwrap_or_else(|| UserTradeHistory {
+                trades: Vec::new(&env),
+                daily_volume: 0,
+                success_count: 0,
+                last_trade_timestamp: 0,
+            });
+
+        let ledger_timestamp = env.ledger().timestamp();
+        let cutoff_time = ledger_timestamp.saturating_sub(days as u64 * 86400);
+
+        Self::calculate_metrics_from_trades(&env, &history.trades, cutoff_time, days)
+    }
+
+    /// Get a user's personal balances
+    pub fn get_user_balances(env: Env, user: Address) -> Map<Address, i128> {
+        let profile_key = UserStorageKey::Profile(user);
+        let profile: UserProfile = env
+            .storage()
+            .persistent()
+            .get(&profile_key)
+            .expect("User not initialized");
+        profile.balances
+    }
+
+    /// Get a user's personal trading configuration
+    pub fn get_user_config(env: Env, user: Address) -> ArbitrageConfig {
+        let profile_key = UserStorageKey::Profile(user);
+        let profile: UserProfile = env
+            .storage()
+            .persistent()
+            .get(&profile_key)
+            .expect("User not initialized");
+        profile.trading_config
+    }
+
+    /// Update a user's personal trading configuration
+    pub fn update_user_config(env: Env, user: Address, new_config: ArbitrageConfig) {
+        user.require_auth();
+
+        let profile_key = UserStorageKey::Profile(user.clone());
+        let mut profile: UserProfile = env
+            .storage()
+            .persistent()
+            .get(&profile_key)
+            .expect("User not initialized");
+
+        profile.trading_config = new_config;
+        env.storage().persistent().set(&profile_key, &profile);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "user"),
+                Symbol::new(&env, "config_updated"),
+            ),
+            (user,),
+        );
+    }
+
+    /// Get a user's personal trade history
+    pub fn get_user_trade_history(env: Env, user: Address, limit: u32) -> Vec<TradeExecution> {
+        let history_key = UserStorageKey::TradeHistory(user);
+        let history_data: UserTradeHistory = env
+            .storage()
+            .persistent()
+            .get(&history_key)
+            .unwrap_or_else(|| UserTradeHistory {
+                trades: Vec::new(&env),
+                daily_volume: 0,
+                success_count: 0,
+                last_trade_timestamp: 0,
+            });
+
+        let trades = history_data.trades; // Extract the Vec<TradeExecution>
+
+        if limit == 0 {
+            return trades;
+        }
+
+        let start_idx = if trades.len() > limit {
+            trades.len() - limit
+        } else {
+            0
+        };
+
+        let mut result = Vec::new(&env);
+        for i in start_idx..trades.len() {
+            result.push_back(trades.get(i).unwrap());
+        }
+
+        result
+    }
+
+    // ===== DAO GOVERNANCE INTEGRATION =====
+
+    /// Set the DAO governance contract address (admin only, one-time)
+    pub fn set_dao_governance(env: Env, admin: Address, dao_address: Address) {
+        admin.require_auth();
+        Self::require_admin(&env, &admin);
+
+        if env
+            .storage()
+            .instance()
+            .has(&Symbol::new(&env, "dao_address"))
+        {
+            panic!("DAO governance already set");
+        }
+
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "dao_address"), &dao_address);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "dao_governance"),
+                Symbol::new(&env, "set"),
+            ),
+            (dao_address,),
+        );
+    }
+
+    /// Update config via DAO proposal
+    pub fn update_config_dao(env: Env, caller: Address, new_config: ArbitrageConfig) {
+        caller.require_auth();
+        Self::require_dao_or_admin(&env, &caller);
+
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "config"), &new_config);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "config"),
+                Symbol::new(&env, "updated_by_dao"),
+            ),
+            (caller,),
+        );
+    }
+
+    /// Add trading pair via DAO proposal
+    pub fn add_enhanced_pair_dao(env: Env, caller: Address, pair: EnhancedStablecoinPair) {
+        caller.require_auth();
+        Self::require_dao_or_admin(&env, &caller);
+        Self::add_enhanced_pair(env, caller, pair);
+    }
+
+    /// Add trading venue via DAO proposal
+    pub fn add_trading_venue_dao(env: Env, caller: Address, venue: TradingVenue) {
+        caller.require_auth();
+        Self::require_dao_or_admin(&env, &caller);
+        Self::add_trading_venue(env, caller, venue);
+    }
+
+    /// Pause pair via DAO proposal
+    pub fn pause_pair_dao(env: Env, caller: Address, stablecoin_symbol: Symbol) {
+        caller.require_auth();
+        Self::require_dao_or_admin(&env, &caller);
+        Self::pause_pair(env, caller, stablecoin_symbol);
+    }
+
+    // ===== GLOBAL SHARED BOT MANAGEMENT =====
+
+    /// Add keeper role (admin only)
+    pub fn add_keeper(env: Env, caller: Address, keeper: Address) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+
+        let mut keepers: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "keepers"))
+            .unwrap_or(Vec::new(&env));
+
+        keepers.push_back(keeper);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "keepers"), &keepers);
+    }
+
+    /// Transfer admin role to a new address
+    pub fn transfer_admin(env: Env, current_admin: Address, new_admin: Address) {
+        current_admin.require_auth();
+        Self::require_admin(&env, &current_admin);
+
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "admin"), &new_admin);
+
+        env.events().publish(
+            (Symbol::new(&env, "admin"), Symbol::new(&env, "transferred")),
+            (current_admin, new_admin),
+        );
+    }
+
+    /// Get the current admin address
+    pub fn get_admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&Symbol::new(&env, "admin"))
+            .unwrap()
+    }
+
+    /// Add enhanced trading pair with oracle preferences (admin only)
+    pub fn add_enhanced_pair(env: Env, caller: Address, pair: EnhancedStablecoinPair) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+
+        let mut pairs: Vec<EnhancedStablecoinPair> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "pairs"))
+            .unwrap_or(Vec::new(&env));
+
+        pairs.push_back(pair);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "pairs"), &pairs);
+    }
+
+    /// Add a trading venue (admin only)
+    pub fn add_trading_venue(env: Env, caller: Address, venue: TradingVenue) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+
+        let mut venues: Vec<TradingVenue> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "trading_venues"))
+            .unwrap_or(Vec::new(&env));
+
+        venues.push_back(venue);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "trading_venues"), &venues);
+    }
+
+    /// Scan for arbitrage opportunities across all configured pairs
+    pub fn scan_advanced_opportunities(env: Env) -> Vec<EnhancedArbitrageOpportunity> {
+        let pairs: Vec<EnhancedStablecoinPair> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "pairs"))
+            .unwrap_or(Vec::new(&env));
+
+        let forex_oracle: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "forex_oracle"))
+            .unwrap();
+        let crypto_oracle: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "crypto_oracle"))
+            .unwrap();
+        let stellar_oracle: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "stellar_oracle"))
+            .unwrap();
+
+        let mut opportunities: Vec<EnhancedArbitrageOpportunity> = Vec::new(&env);
+
+        for pair in pairs.iter() {
+            if let Some(opportunity) = Self::check_enhanced_arbitrage(
+                &env,
+                &pair,
+                &forex_oracle,
+                &crypto_oracle,
+                &stellar_oracle,
+            ) {
+                opportunities.push_back(opportunity);
+            }
+        }
+
+        opportunities
+    }
+
+    /// Execute an arbitrage trade using shared/global funds
+    pub fn execute_enhanced_arbitrage(
+        env: Env,
+        caller: Address,
+        opportunity: EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        venue_address: Address,
+    ) -> TradeExecution {
+        caller.require_auth();
+        Self::require_keeper_or_admin(&env, &caller);
+
+        let risk_manager: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "risk_manager"))
+            .unwrap();
+
+        let risk_check = Self::check_trade_risk(&env, &risk_manager, trade_amount);
+        if risk_check != Symbol::new(&env, "APPROVED") {
+            return TradeExecution {
+                opportunity: ArbitrageOpportunity::from_enhanced(&opportunity),
+                executed_amount: 0,
+                actual_profit: 0,
+                gas_cost: 0,
+                execution_timestamp: env.ledger().timestamp(),
+                status: risk_check,
+            };
+        }
+
+        let config: ArbitrageConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "config"))
+            .unwrap();
+
+        if !config.enabled {
+            return Self::create_failed_execution(&env, &opportunity, "DISABLED");
+        }
+
+        if !validate_trade_size(trade_amount, &config) {
+            return Self::create_failed_execution(&env, &opportunity, "INVALID_SIZE");
+        }
+
+        let simulation_result =
+            Self::simulate_arbitrage_trade(&env, &opportunity, trade_amount, &venue_address);
+
+        if let Some(sim) = simulation_result {
+            let slippage_bps = calculate_slippage_bps(
+                opportunity.base_opportunity.estimated_profit,
+                sim.amount_out - trade_amount,
+            );
+
+            if slippage_bps > config.slippage_tolerance_bps {
+                return Self::create_failed_execution(&env, &opportunity, "SLIPPAGE_TOO_HIGH");
+            }
+        }
+
+        let execution = Self::execute_real_trade(&env, &opportunity, trade_amount, &venue_address);
+
+        if execution.status == Symbol::new(&env, "SUCCESS") {
+            Self::update_risk_manager(&env, &risk_manager, &caller, trade_amount);
+        }
+
+        Self::store_trade_execution(&env, &execution);
+
+        execution
+    }
+
+    /// Pause a specific trading pair (admin only)
+    pub fn pause_pair(env: Env, caller: Address, stablecoin_symbol: Symbol) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+
+        let pairs: Vec<EnhancedStablecoinPair> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "pairs"))
+            .unwrap_or(Vec::new(&env));
+
+        let mut updated_pairs: Vec<EnhancedStablecoinPair> = Vec::new(&env);
+        for pair in pairs.iter() {
+            let mut updated_pair = pair.clone();
+            if pair.base.stablecoin_symbol == stablecoin_symbol {
+                updated_pair.enabled = false;
+            }
+            updated_pairs.push_back(updated_pair);
+        }
+
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "pairs"), &updated_pairs);
+    }
+
+    /// Get global performance metrics
+    pub fn get_performance_metrics(env: Env, days: u32) -> PerformanceMetrics {
+        let history: Vec<TradeExecution> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "trade_history"))
+            .unwrap_or(Vec::new(&env));
+
+        let ledger_timestamp = env.ledger().timestamp();
+        let cutoff_time = ledger_timestamp.saturating_sub(days as u64 * 86400);
+
+        Self::calculate_metrics_from_trades(&env, &history, cutoff_time, days)
+    }
+
+    // ===== LEGACY COMPATIBILITY METHODS =====
+
+    pub fn add_pair(env: Env, caller: Address, pair: StablecoinPair) {
+        let enhanced_pair = EnhancedStablecoinPair::from_basic(&env, pair);
+        Self::add_enhanced_pair(env, caller, enhanced_pair);
+    }
+
+    pub fn scan_opportunities(env: Env) -> Vec<ArbitrageOpportunity> {
+        let env_clone = env.clone();
+        let enhanced = Self::scan_advanced_opportunities(env);
+        let mut basic = Vec::new(&env_clone);
+        for enh in enhanced.iter() {
+            basic.push_back(enh.base_opportunity.clone());
+        }
+        basic
+    }
+
+    pub fn execute_arbitrage(
+        env: Env,
+        caller: Address,
+        opportunity: ArbitrageOpportunity,
+        trade_amount: i128,
+    ) -> TradeExecution {
+        let enhanced = EnhancedArbitrageOpportunity::from_basic(&env, opportunity);
+        let default_venue = Address::from_string(&String::from_str(&env, "DEFAULT_VENUE"));
+        Self::execute_enhanced_arbitrage(env, caller, enhanced, trade_amount, default_venue)
+    }
+
+    pub fn get_config(env: Env) -> ArbitrageConfig {
+        env.storage()
+            .instance()
+            .get(&Symbol::new(&env, "config"))
+            .unwrap()
+    }
+
+    pub fn update_config(env: Env, caller: Address, new_config: ArbitrageConfig) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "config"), &new_config);
+    }
+
+    pub fn emergency_stop(env: Env, caller: Address) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+
+        let mut config: ArbitrageConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "config"))
+            .unwrap();
+        config.enabled = false;
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "config"), &config);
+    }
+
+    pub fn get_pairs(env: Env) -> Vec<StablecoinPair> {
+        let enhanced: Vec<EnhancedStablecoinPair> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "pairs"))
+            .unwrap_or(Vec::new(&env));
+
+        let mut basic = Vec::new(&env);
+        for pair in enhanced.iter() {
+            basic.push_back(pair.base.clone());
+        }
+        basic
+    }
+
+    pub fn get_trade_history(env: Env, limit: u32) -> Vec<TradeExecution> {
+        let history: Vec<TradeExecution> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "trade_history"))
+            .unwrap_or(Vec::new(&env));
+
+        if limit == 0 {
+            return history;
+        }
+
+        let start_idx = if history.len() > limit {
+            history.len() - limit
+        } else {
+            0
+        };
+
+        let mut result = Vec::new(&env);
+        for i in start_idx..history.len() {
+            result.push_back(history.get(i).unwrap());
+        }
+
+        result
+    }
+
+    // ===== PRIVATE HELPER METHODS =====
+
+    /// Execute trade specifically for a user
+    fn execute_trade_for_user(
+        env: &Env,
+        user: &Address,
+        opportunity: &EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        venue_address: &Address,
+    ) -> TradeExecution {
+        let dex_client = StellarDEXClient::new(env, venue_address);
+        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
+        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+
+        let deadline = env.ledger().timestamp() + 300;
+
+        let swap_result = dex_client.swap(
+            &env.current_contract_address(),
+            token_in,
+            token_out,
+            &trade_amount,
+            &0i128,
+            &deadline,
+        );
+
+        let gas_cost = estimate_gas_cost(env, 3);
+        let net_profit = swap_result.amount_out - trade_amount - gas_cost;
+
+        let execution = TradeExecution {
+            opportunity: opportunity.base_opportunity.clone(),
+            executed_amount: trade_amount,
+            actual_profit: net_profit,
+            gas_cost,
+            execution_timestamp: env.ledger().timestamp(),
+            status: if swap_result.success {
+                Symbol::new(env, "SUCCESS")
+            } else {
+                Symbol::new(env, "FAILED")
+            },
+        };
+
+        env.events().publish(
+            (Symbol::new(env, "user_trade"), Symbol::new(env, "executed")),
+            (user.clone(), execution.clone()),
+        );
+
+        execution
+    }
+
+    /// Update user's trade history
+    fn update_user_trade_history(env: &Env, user: &Address, execution: &TradeExecution) {
+        let history_key = UserStorageKey::TradeHistory(user.clone());
+        let mut history: UserTradeHistory = env.storage().persistent().get(&history_key).unwrap();
+
+        history.trades.push_back(execution.clone());
+        history.daily_volume += execution.executed_amount;
+        history.last_trade_timestamp = execution.execution_timestamp;
+
+        if execution.status == Symbol::new(env, "SUCCESS") {
+            history.success_count += 1;
+        }
+
+        // Keep only last 100 trades per user
+        if history.trades.len() > 100 {
+            let mut new_trades = Vec::new(env);
+            for i in 1..history.trades.len() {
+                new_trades.push_back(history.trades.get(i).unwrap());
+            }
+            history.trades = new_trades;
+        }
+
+        env.storage().persistent().set(&history_key, &history);
+    }
+
+    fn check_enhanced_arbitrage(
+        env: &Env,
+        pair: &EnhancedStablecoinPair,
+        forex_oracle: &Address,
+        crypto_oracle: &Address,
+        stellar_oracle: &Address,
+    ) -> Option<EnhancedArbitrageOpportunity> {
+        if !pair.enabled {
+            return None;
+        }
+
+        let fiat_price = Self::get_price_with_fallback(
+            env,
+            &pair.price_sources.fiat_sources,
+            &pair.base.fiat_symbol,
+            forex_oracle,
+            stellar_oracle,
+        )?;
+
+        let stablecoin_price = Self::get_price_with_fallback(
+            env,
+            &pair.price_sources.stablecoin_sources,
+            &pair.base.stablecoin_symbol,
+            crypto_oracle,
+            stellar_oracle,
+        )?;
+
+        let stablecoin_twap = Self::get_twap_price(
+            env,
+            crypto_oracle,
+            &pair.base.stablecoin_symbol,
+            pair.twap_config.periods,
+        );
+
+        let cross_price_valid = Self::validate_cross_price(
+            env,
+            stellar_oracle,
+            &pair.base.stablecoin_symbol,
+            &pair.base.fiat_symbol,
+            stablecoin_price.price,
+            fiat_price.price,
+        );
+
+        if !cross_price_valid {
+            env.events().publish(
+                (
+                    Symbol::new(env, "arbitrage_opportunity"),
+                    Symbol::new(env, "cross_price_invalid"),
+                ),
+                (
+                    pair.base.stablecoin_symbol.clone(),
+                    pair.base.fiat_symbol.clone(),
+                ),
+            );
+            return None;
+        }
+
+        let expected_price = (fiat_price.price * pair.base.target_peg) / 10000;
+        let deviation_bps = calculate_deviation_bps(stablecoin_price.price, expected_price);
+
+        if deviation_bps >= pair.base.deviation_threshold_bps {
+            let trade_direction = if stablecoin_price.price > expected_price {
+                Symbol::new(env, "SELL")
+            } else {
+                Symbol::new(env, "BUY")
+            };
+
+            let estimated_profit = Self::calculate_enhanced_profit(
+                env,
+                stablecoin_price.price,
+                expected_price,
+                &pair.fee_config,
+            );
+
+            let opportunity = EnhancedArbitrageOpportunity {
+                base_opportunity: ArbitrageOpportunity {
+                    pair: pair.base.clone(),
+                    stablecoin_price: stablecoin_price.price,
+                    fiat_rate: fiat_price.price,
+                    deviation_bps,
+                    estimated_profit,
+                    trade_direction,
+                    timestamp: env.ledger().timestamp(),
+                },
+                twap_price: stablecoin_twap,
+                confidence_score: Self::calculate_confidence_score(
+                    deviation_bps,
+                    &pair.risk_config,
+                ),
+                max_trade_size: pair.risk_config.max_position_size,
+                venue_recommendations: Self::get_venue_recommendations(
+                    env,
+                    &pair.base.stablecoin_address,
+                ),
+            };
+
+            env.events().publish(
+                (
+                    Symbol::new(env, "arbitrage_opportunity"),
+                    Symbol::new(env, "found"),
+                ),
+                (opportunity.clone(),),
+            );
+
+            Some(opportunity)
+        } else {
+            None
+        }
+    }
+
+    fn get_price_with_fallback(
+        env: &Env,
+        sources: &Vec<OracleSource>,
+        symbol: &Symbol,
+        primary_oracle: &Address,
+        fallback_oracle: &Address,
+    ) -> Option<PriceData> {
+        let current_time = env.ledger().timestamp();
+        let max_age = 600;
+
+        for source in sources.iter() {
+            let oracle_addr = match source.oracle_type {
+                OracleType::Forex => primary_oracle,
+                OracleType::Crypto => primary_oracle,
+                OracleType::Stellar => fallback_oracle,
+            };
+
+            let client = ReflectorClient::new(env, oracle_addr);
+            let asset = match source.asset_type {
+                AssetType::Symbol => Asset::Other(symbol.clone()),
+                AssetType::Address => Asset::Stellar(source.address.clone().unwrap()),
+            };
+
+            if let Some(price_data) = client.lastprice(&asset) {
+                if check_price_freshness(&price_data, current_time, max_age) {
+                    return Some(price_data);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn get_twap_price(env: &Env, oracle: &Address, symbol: &Symbol, periods: u32) -> Option<i128> {
+        let client = ReflectorClient::new(env, oracle);
+        let asset = Asset::Other(symbol.clone());
+        client.twap(&asset, &periods)
+    }
+
+    fn validate_cross_price(
+        env: &Env,
+        oracle: &Address,
+        stablecoin_symbol: &Symbol,
+        fiat_symbol: &Symbol,
+        stablecoin_price: i128,
+        fiat_price: i128,
+    ) -> bool {
+        let client = ReflectorClient::new(env, oracle);
+        let stablecoin_asset = Asset::Other(stablecoin_symbol.clone());
+        let fiat_asset = Asset::Other(fiat_symbol.clone());
+
+        if let Some(cross_price_data) = client.x_last_price(&stablecoin_asset, &fiat_asset) {
+            let expected_cross = stablecoin_price / fiat_price;
+            let deviation_bps = calculate_deviation_bps(cross_price_data.price, expected_cross);
+            deviation_bps < 500
+        } else {
+            true
+        }
+    }
+
+    fn calculate_enhanced_profit(
+        _env: &Env,
+        stablecoin_price: i128,
+        expected_price: i128,
+        fee_config: &FeeConfiguration,
+    ) -> i128 {
+        let price_diff = if stablecoin_price > expected_price {
+            stablecoin_price - expected_price
+        } else {
+            expected_price - stablecoin_price
+        };
+
+        let total_fees_bps =
+            fee_config.trading_fee_bps + fee_config.gas_fee_bps + fee_config.bridge_fee_bps;
+
+        let gross_profit_per_unit = price_diff;
+        let fee_per_unit = (gross_profit_per_unit * total_fees_bps as i128) / 10000;
+
+        gross_profit_per_unit - fee_per_unit
+    }
+
+    fn calculate_confidence_score(deviation_bps: u32, risk_config: &RiskConfiguration) -> u32 {
+        let deviation_score = (deviation_bps * 100).min(5000);
+        let base_score = 3000;
+        let risk_adjustment = if risk_config.max_position_size > 100000_0000000 {
+            1000
+        } else {
+            500
+        };
+
+        (deviation_score + base_score + risk_adjustment).min(10000)
+    }
+
+    fn get_venue_recommendations(env: &Env, _token_address: &Address) -> Vec<TradingVenue> {
+        let venues: Vec<TradingVenue> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "trading_venues"))
+            .unwrap_or(Vec::new(env));
+
+        let mut recommendations = Vec::new(env);
+        for venue in venues.iter() {
+            if venue.enabled {
+                recommendations.push_back(venue);
+            }
+        }
+
+        recommendations
+    }
+
+    fn simulate_arbitrage_trade(
+        env: &Env,
+        opportunity: &EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        venue_address: &Address,
+    ) -> Option<SwapResult> {
+        let dex_client = StellarDEXClient::new(env, venue_address);
+        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
+        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+
+        simulate_trade(env, &dex_client, token_in, token_out, trade_amount)
+    }
+
+    fn execute_real_trade(
+        env: &Env,
+        opportunity: &EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        venue_address: &Address,
+    ) -> TradeExecution {
+        let dex_client = StellarDEXClient::new(env, venue_address);
+        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
+        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+
+        let deadline = env.ledger().timestamp() + 300;
+
+        let swap_result = dex_client.swap(
+            &env.current_contract_address(),
+            token_in,
+            token_out,
+            &trade_amount,
+            &0i128,
+            &deadline,
+        );
+
+        let gas_cost = estimate_gas_cost(env, 3);
+        let net_profit = swap_result.amount_out - trade_amount - gas_cost;
+
+        let execution = TradeExecution {
+            opportunity: opportunity.base_opportunity.clone(),
+            executed_amount: trade_amount,
+            actual_profit: net_profit,
+            gas_cost,
+            execution_timestamp: env.ledger().timestamp(),
+            status: if swap_result.success {
+                Symbol::new(env, "SUCCESS")
+            } else {
+                Symbol::new(env, "FAILED")
+            },
+        };
+
+        env.events().publish(
+            (
+                Symbol::new(env, "trade_execution"),
+                Symbol::new(env, "completed"),
+            ),
+            (execution.clone(),),
+        );
+
+        execution
+    }
+
+    fn check_trade_risk(env: &Env, risk_manager: &Address, trade_size: i128) -> Symbol {
+        let risk_client = RiskManagerClient::new(env, risk_manager);
+        risk_client.check_trade_risk(&trade_size)
+    }
+
+    fn update_risk_manager(env: &Env, risk_manager: &Address, caller: &Address, volume: i128) {
+        let risk_client = RiskManagerClient::new(env, risk_manager);
+        risk_client.update_daily_volume(caller, &volume);
+    }
+
+    fn create_failed_execution(
+        env: &Env,
+        opportunity: &EnhancedArbitrageOpportunity,
+        reason: &str,
+    ) -> TradeExecution {
+        let execution = TradeExecution {
+            opportunity: opportunity.base_opportunity.clone(),
+            executed_amount: 0,
+            actual_profit: 0,
+            gas_cost: 0,
+            execution_timestamp: env.ledger().timestamp(),
+            status: Symbol::new(env, reason),
+        };
+
+        env.events().publish(
+            (
+                Symbol::new(env, "trade_execution"),
+                Symbol::new(env, "failed"),
+            ),
+            (execution.clone(),),
+        );
+
+        execution
+    }
+
+    fn require_keeper_or_admin(env: &Env, caller: &Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "admin"))
+            .unwrap();
+        if caller == &admin {
+            return;
+        }
+
+        let keepers: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "keepers"))
+            .unwrap_or(Vec::new(env));
+
+        for keeper in keepers.iter() {
+            if caller == &keeper {
+                return;
+            }
+        }
+
+        panic!("Unauthorized: caller is not admin or keeper");
+    }
+
+    fn require_admin(env: &Env, caller: &Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "admin"))
+            .unwrap();
+        if caller != &admin {
+            panic!("Unauthorized: caller is not admin");
+        }
+    }
+
+    fn require_dao_or_admin(env: &Env, caller: &Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "admin"))
+            .unwrap();
+        if caller == &admin {
+            return;
+        }
+
+        if let Some(dao_address) = env
+            .storage()
+            .instance()
+            .get::<Symbol, Address>(&Symbol::new(env, "dao_address"))
+        {
+            if caller == &dao_address {
+                return;
+            }
+        }
+
+        panic!("Unauthorized: caller is not admin or DAO");
+    }
+
+    fn store_trade_execution(env: &Env, execution: &TradeExecution) {
+        let mut history: Vec<TradeExecution> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "trade_history"))
+            .unwrap_or(Vec::new(env));
+
+        history.push_back(execution.clone());
+
+        if history.len() > 100 {
+            let mut new_history = Vec::new(env);
+            for i in 1..history.len() {
+                new_history.push_back(history.get(i).unwrap());
+            }
+            history = new_history;
+        }
+
+        env.storage()
+            .instance()
+            .set(&Symbol::new(env, "trade_history"), &history);
+
+        env.events().publish(
+            (
+                Symbol::new(env, "trade_execution"),
+                Symbol::new(env, "stored"),
+            ),
+            (execution.clone(),),
+        );
+    }
+
+    fn calculate_metrics_from_trades(
+        env: &Env,
+        trades: &Vec<TradeExecution>,
+        cutoff_time: u64,
+        period_days: u32,
+    ) -> PerformanceMetrics {
+        let mut total_profit = 0i128;
+        let mut total_trades = 0u32;
+        let mut successful_trades = 0u32;
+        let mut total_volume = 0i128;
+
+        for trade in trades.iter() {
+            if trade.execution_timestamp >= cutoff_time {
+                total_trades += 1;
+                total_volume += trade.executed_amount;
+                total_profit += trade.actual_profit;
+
+                if trade.status == Symbol::new(env, "SUCCESS") {
+                    successful_trades += 1;
+                }
+            }
+        }
+
+        let success_rate_bps = if total_trades > 0 {
+            (successful_trades * 10000) / total_trades
+        } else {
+            0
+        };
+
+        PerformanceMetrics {
+            total_profit,
+            total_trades,
+            successful_trades,
+            success_rate_bps,
+            total_volume,
+            avg_profit_per_trade: if total_trades > 0 {
+                total_profit / total_trades as i128
+            } else {
+                0
+            },
+            period_days,
+        }
+    }
+}
+
+// Token client for interacting with Stellar Asset Contracts
+// Token client for interacting with Stellar Asset Contracts
+// Move these OUTSIDE the impl block, at module level
+#[soroban_sdk::contractclient(name = "TokenClient")]
+pub trait Token {
+    fn transfer(env: Env, from: Address, to: Address, amount: i128);
+    fn balance(env: Env, id: Address) -> i128;
+    fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32);
+}
+
+#[soroban_sdk::contractclient(name = "ArbBotClient")]
+pub trait ArbitrageBotContract {
+    fn update_config_dao(env: Env, caller: Address, new_config: ArbitrageConfig);
+    fn add_enhanced_pair_dao(env: Env, caller: Address, pair: EnhancedStablecoinPair);
+    fn add_trading_venue_dao(env: Env, caller: Address, venue: TradingVenue);
+    fn pause_pair_dao(env: Env, caller: Address, stablecoin_symbol: Symbol);
+    fn emergency_stop(env: Env, caller: Address);
+    fn transfer_admin(env: Env, current_admin: Address, new_admin: Address);
+}
+
+// // ArbitrageBot client for executing governance decisions
+// #[soroban_sdk::contractclient(name = "ArbitrageBotClient")]
+// pub trait ArbitrageBotContract {
+//     fn update_config_dao(&self, env: Env, caller: Address, new_config: ArbitrageConfig);
+//     fn add_enhanced_pair_dao(&self, env: Env, caller: Address, pair: EnhancedStablecoinPair);
+//     fn add_trading_venue_dao(&self, env: Env, caller: Address, venue: TradingVenue);
+//     fn pause_pair_dao(&self, env: Env, caller: Address, stablecoin_symbol: Symbol);
+//     fn emergency_stop(&self, env: Env, caller: Address);
+//     fn transfer_admin(&self, env: Env, current_admin: Address, new_admin: Address);
+// }
+mod test;
