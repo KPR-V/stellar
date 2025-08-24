@@ -17,8 +17,8 @@ fn test_twap_calculation() {
 
     let strategy = TWAPStrategy {
         window_periods: 4,
-        min_deviation_bps: 200,  // 2%
-        position_size_pct: 1000, // 10%
+        min_deviation_bps: 200,  
+        position_size_pct: 1000, 
     };
 
     let signal = client.calculate_twap_signal(&current_price, &historical_prices, &strategy);

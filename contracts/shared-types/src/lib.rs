@@ -112,7 +112,7 @@ pub struct EnhancedArbitrageOpportunity {
     pub twap_price: Option<i128>,
     pub confidence_score: u32,
     pub max_trade_size: i128,
-    pub venue_recommendations: Vec<TradingVenue>, // Changed from crate::dex::TradingVenue
+    pub venue_recommendations: Vec<TradingVenue>, 
 }
 
 #[contracttype]
@@ -174,7 +174,7 @@ pub struct RiskLimits {
     pub var_limit: i128,
 }
 
-// Add TradingVenue that was referenced
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TradingVenue {
@@ -185,7 +185,7 @@ pub struct TradingVenue {
     pub liquidity_threshold: i128,
 }
 
-// All the implementation methods
+
 impl EnhancedStablecoinPair {
     pub fn from_basic(env: &soroban_sdk::Env, basic: StablecoinPair) -> Self {
         let mut fiat_sources = Vec::new(env);

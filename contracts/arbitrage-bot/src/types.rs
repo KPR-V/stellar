@@ -137,15 +137,15 @@ pub struct PerformanceMetrics {
     pub period_days: u32,
 }
 
-// Add these new structures for per-user isolation
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserProfile {
-    pub balances: Map<Address, i128>,    // Token balances per user
-    pub risk_limits: RiskLimits,         // Personal risk settings
-    pub trading_config: ArbitrageConfig, // Personal bot config
-    pub total_profit_loss: i128,         // Individual P&L
-    pub is_active: bool,                 // User account status
+    pub balances: Map<Address, i128>,    
+    pub risk_limits: RiskLimits,         
+    pub trading_config: ArbitrageConfig, 
+    pub total_profit_loss: i128,         
+    pub is_active: bool,                 
 }
 
 #[contracttype]
@@ -157,13 +157,13 @@ pub struct UserTradeHistory {
     pub last_trade_timestamp: u64,
 }
 
-// Storage key enum for per-user data
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UserStorageKey {
-    Profile(Address),          // User's profile data
-    TradeHistory(Address),     // User's trade history
-    DailyVolume(Address, u64), // Daily volume by date
+    Profile(Address),         
+    TradeHistory(Address),     
+    DailyVolume(Address, u64),
 }
 
 #[contracttype]
@@ -177,7 +177,7 @@ pub struct RiskLimits {
 
 impl EnhancedStablecoinPair {
     pub fn from_basic(env: &soroban_sdk::Env, basic: StablecoinPair) -> Self {
-        // Create default oracle sources
+
         let mut fiat_sources = Vec::new(env);
         fiat_sources.push_back(OracleSource {
             oracle_type: OracleType::Forex,
@@ -231,7 +231,7 @@ impl EnhancedArbitrageOpportunity {
         Self {
             base_opportunity: basic,
             twap_price: None,
-            confidence_score: 5000, // 50% default
+            confidence_score: 5000, 
             max_trade_size: 100000_0000000,
             venue_recommendations: Vec::new(env),
         }

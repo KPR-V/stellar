@@ -2,32 +2,27 @@
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Map, String, Symbol, Vec};
 
-// Module imports
 pub mod dex;
 pub mod reflector;
-// pub mod types;
 pub mod utils;
 pub use shared_types::*;
 pub use dex::{
     StellarDEXClient, 
     SwapResult, 
     simulate_trade,
-    calculate_slippage_bps,  // ✅ Add this
+    calculate_slippage_bps, 
     estimate_gas_cost,  
-    // Don't import TradingVenue from dex - use the one from shared_types
 };
 pub use reflector::*;
-// pub use types::*;
 pub use utils::*;
 
-// Client for the RiskManager contract
 #[soroban_sdk::contractclient(name = "RiskManagerClient")]
 pub trait RiskManagerContract {
     fn check_trade_risk(env: Env, trade_size: i128) -> Symbol;
     fn update_daily_volume(env: Env, caller: Address, volume_delta: i128);
 }
 
-// Testnet Oracle Addresses
+
 const STELLAR_ORACLE_TESTNET: &str = "CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP";
 const FOREX_ORACLE_TESTNET: &str = "CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W";
 const CRYPTO_ORACLE_TESTNET: &str = "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63";
@@ -37,9 +32,7 @@ pub struct ArbitrageBot;
 
 #[contractimpl]
 impl ArbitrageBot {
-    // ===== INITIALIZATION & ADMINISTRATION =====
 
-    /// Initialize with testnet oracles (one-time setup)
     pub fn initialize_testnet(
         env: Env,
         admin: Address,
@@ -61,7 +54,7 @@ impl ArbitrageBot {
         );
     }
 
-    /// Initialize the arbitrage bot with full configuration
+  
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -79,7 +72,7 @@ impl ArbitrageBot {
             panic!("Contract already initialized");
         }
 
-        // Store all global configuration
+     
         env.storage()
             .instance()
             .set(&Symbol::new(&env, "admin"), &admin);
@@ -102,7 +95,7 @@ impl ArbitrageBot {
             .instance()
             .set(&Symbol::new(&env, "initialized"), &true);
 
-        // Initialize global storage
+    
         let empty_pairs: Vec<EnhancedStablecoinPair> = Vec::new(&env);
         env.storage()
             .instance()
@@ -118,16 +111,14 @@ impl ArbitrageBot {
             .instance()
             .set(&Symbol::new(&env, "trading_venues"), &empty_venues);
 
-        // Initialize role-based access
+     
         let keepers: Vec<Address> = Vec::new(&env);
         env.storage()
             .instance()
             .set(&Symbol::new(&env, "keepers"), &keepers);
     }
 
-    // ===== USER ACCOUNT MANAGEMENT =====
 
-    /// Initialize user account for individual resource management
     pub fn initialize_user_account(
         env: Env,
         user: Address,
@@ -167,7 +158,7 @@ impl ArbitrageBot {
         );
     }
 
-    /// User deposits funds into their personal trading account
+   
     pub fn deposit_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
         user.require_auth();
 
@@ -185,7 +176,7 @@ impl ArbitrageBot {
 
         env.storage().persistent().set(&profile_key, &profile);
 
-        // Transfer tokens from user to contract
+     
         let token_client = TokenClient::new(&env, &token_address);
         token_client.transfer(&user, &env.current_contract_address(), &amount);
 
@@ -195,7 +186,7 @@ impl ArbitrageBot {
         );
     }
 
-    /// User withdraws funds from their personal trading account
+  
     pub fn withdraw_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
         user.require_auth();
 
@@ -216,7 +207,7 @@ impl ArbitrageBot {
             .set(token_address.clone(), current_balance - amount);
         env.storage().persistent().set(&profile_key, &profile);
 
-        // Transfer tokens from contract to user
+      
         let token_client = TokenClient::new(&env, &token_address);
         token_client.transfer(&env.current_contract_address(), &user, &amount);
 
@@ -226,7 +217,7 @@ impl ArbitrageBot {
         );
     }
 
-    /// Execute an arbitrage trade using a user's individual funds
+  
     pub fn execute_user_arbitrage(
         env: Env,
         user: Address,
@@ -298,7 +289,7 @@ impl ArbitrageBot {
         execution
     }
 
-    /// Get a specific user's performance metrics
+  
     pub fn get_user_performance_metrics(env: Env, user: Address, days: u32) -> PerformanceMetrics {
         let history_key = UserStorageKey::TradeHistory(user);
         let history: UserTradeHistory = env
@@ -318,7 +309,7 @@ impl ArbitrageBot {
         Self::calculate_metrics_from_trades(&env, &history.trades, cutoff_time, days)
     }
 
-    /// Get a user's personal balances
+ 
     pub fn get_user_balances(env: Env, user: Address) -> Map<Address, i128> {
         let profile_key = UserStorageKey::Profile(user);
         let profile: UserProfile = env
@@ -329,7 +320,7 @@ impl ArbitrageBot {
         profile.balances
     }
 
-    /// Get a user's personal trading configuration
+   
     pub fn get_user_config(env: Env, user: Address) -> ArbitrageConfig {
         let profile_key = UserStorageKey::Profile(user);
         let profile: UserProfile = env
@@ -340,7 +331,7 @@ impl ArbitrageBot {
         profile.trading_config
     }
 
-    /// Update a user's personal trading configuration
+ 
     pub fn update_user_config(env: Env, user: Address, new_config: ArbitrageConfig) {
         user.require_auth();
 
@@ -363,7 +354,7 @@ impl ArbitrageBot {
         );
     }
 
-    /// Get a user's personal trade history
+   
     pub fn get_user_trade_history(env: Env, user: Address, limit: u32) -> Vec<TradeExecution> {
         let history_key = UserStorageKey::TradeHistory(user);
         let history_data: UserTradeHistory = env
@@ -377,7 +368,7 @@ impl ArbitrageBot {
                 last_trade_timestamp: 0,
             });
 
-        let trades = history_data.trades; // Extract the Vec<TradeExecution>
+        let trades = history_data.trades; 
 
         if limit == 0 {
             return trades;
@@ -397,9 +388,7 @@ impl ArbitrageBot {
         result
     }
 
-    // ===== DAO GOVERNANCE INTEGRATION =====
 
-    /// Set the DAO governance contract address (admin only, one-time)
     pub fn set_dao_governance(env: Env, admin: Address, dao_address: Address) {
         admin.require_auth();
         Self::require_admin(&env, &admin);
@@ -425,7 +414,6 @@ impl ArbitrageBot {
         );
     }
 
-    /// Update config via DAO proposal
     pub fn update_config_dao(env: Env, caller: Address, new_config: ArbitrageConfig) {
         caller.require_auth();
         Self::require_dao_or_admin(&env, &caller);
@@ -443,30 +431,27 @@ impl ArbitrageBot {
         );
     }
 
-    /// Add trading pair via DAO proposal
     pub fn add_enhanced_pair_dao(env: Env, caller: Address, pair: EnhancedStablecoinPair) {
         caller.require_auth();
         Self::require_dao_or_admin(&env, &caller);
         Self::add_enhanced_pair(env, caller, pair);
     }
 
-    /// Add trading venue via DAO proposal
+ 
     pub fn add_trading_venue_dao(env: Env, caller: Address, venue: TradingVenue) {
         caller.require_auth();
         Self::require_dao_or_admin(&env, &caller);
         Self::add_trading_venue(env, caller, venue);
     }
 
-    /// Pause pair via DAO proposal
+  
     pub fn pause_pair_dao(env: Env, caller: Address, stablecoin_symbol: Symbol) {
         caller.require_auth();
         Self::require_dao_or_admin(&env, &caller);
         Self::pause_pair(env, caller, stablecoin_symbol);
     }
 
-    // ===== GLOBAL SHARED BOT MANAGEMENT =====
-
-    /// Add keeper role (admin only)
+  
     pub fn add_keeper(env: Env, caller: Address, keeper: Address) {
         caller.require_auth();
         Self::require_admin(&env, &caller);
@@ -483,7 +468,7 @@ impl ArbitrageBot {
             .set(&Symbol::new(&env, "keepers"), &keepers);
     }
 
-    /// Transfer admin role to a new address
+
     pub fn transfer_admin(env: Env, current_admin: Address, new_admin: Address) {
         current_admin.require_auth();
         Self::require_admin(&env, &current_admin);
@@ -498,7 +483,7 @@ impl ArbitrageBot {
         );
     }
 
-    /// Get the current admin address
+  
     pub fn get_admin(env: Env) -> Address {
         env.storage()
             .instance()
@@ -506,7 +491,7 @@ impl ArbitrageBot {
             .unwrap()
     }
 
-    /// Add enhanced trading pair with oracle preferences (admin only)
+ 
     pub fn add_enhanced_pair(env: Env, caller: Address, pair: EnhancedStablecoinPair) {
         caller.require_auth();
         Self::require_admin(&env, &caller);
@@ -523,7 +508,7 @@ impl ArbitrageBot {
             .set(&Symbol::new(&env, "pairs"), &pairs);
     }
 
-    /// Add a trading venue (admin only)
+  
     pub fn add_trading_venue(env: Env, caller: Address, venue: TradingVenue) {
         caller.require_auth();
         Self::require_admin(&env, &caller);
@@ -540,7 +525,7 @@ impl ArbitrageBot {
             .set(&Symbol::new(&env, "trading_venues"), &venues);
     }
 
-    /// Scan for arbitrage opportunities across all configured pairs
+   
     pub fn scan_advanced_opportunities(env: Env) -> Vec<EnhancedArbitrageOpportunity> {
         let pairs: Vec<EnhancedStablecoinPair> = env
             .storage()
@@ -581,7 +566,7 @@ impl ArbitrageBot {
         opportunities
     }
 
-    /// Execute an arbitrage trade using shared/global funds
+  
     pub fn execute_enhanced_arbitrage(
         env: Env,
         caller: Address,
@@ -649,7 +634,7 @@ impl ArbitrageBot {
         execution
     }
 
-    /// Pause a specific trading pair (admin only)
+
     pub fn pause_pair(env: Env, caller: Address, stablecoin_symbol: Symbol) {
         caller.require_auth();
         Self::require_admin(&env, &caller);
@@ -674,7 +659,7 @@ impl ArbitrageBot {
             .set(&Symbol::new(&env, "pairs"), &updated_pairs);
     }
 
-    /// Get global performance metrics
+ 
     pub fn get_performance_metrics(env: Env, days: u32) -> PerformanceMetrics {
         let history: Vec<TradeExecution> = env
             .storage()
@@ -688,7 +673,7 @@ impl ArbitrageBot {
         Self::calculate_metrics_from_trades(&env, &history, cutoff_time, days)
     }
 
-    // ===== LEGACY COMPATIBILITY METHODS =====
+
 
     pub fn add_pair(env: Env, caller: Address, pair: StablecoinPair) {
         let enhanced_pair = EnhancedStablecoinPair::from_basic(&env, pair);
@@ -785,9 +770,7 @@ impl ArbitrageBot {
         result
     }
 
-    // ===== PRIVATE HELPER METHODS =====
-
-    /// Execute trade specifically for a user
+ 
     fn execute_trade_for_user(
         env: &Env,
         user: &Address,
@@ -834,7 +817,7 @@ impl ArbitrageBot {
         execution
     }
 
-    /// Update user's trade history
+   
     fn update_user_trade_history(env: &Env, user: &Address, execution: &TradeExecution) {
         let history_key = UserStorageKey::TradeHistory(user.clone());
         let mut history: UserTradeHistory = env.storage().persistent().get(&history_key).unwrap();
@@ -847,7 +830,7 @@ impl ArbitrageBot {
             history.success_count += 1;
         }
 
-        // Keep only last 100 trades per user
+     
         if history.trades.len() > 100 {
             let mut new_trades = Vec::new(env);
             for i in 1..history.trades.len() {
@@ -1309,9 +1292,7 @@ impl ArbitrageBot {
     }
 }
 
-// Token client for interacting with Stellar Asset Contracts
-// Token client for interacting with Stellar Asset Contracts
-// Move these OUTSIDE the impl block, at module level
+
 #[soroban_sdk::contractclient(name = "TokenClient")]
 pub trait Token {
     fn transfer(env: Env, from: Address, to: Address, amount: i128);
@@ -1329,14 +1310,4 @@ pub trait ArbitrageBotContract {
     fn transfer_admin(env: Env, current_admin: Address, new_admin: Address);
 }
 
-// // ArbitrageBot client for executing governance decisions
-// #[soroban_sdk::contractclient(name = "ArbitrageBotClient")]
-// pub trait ArbitrageBotContract {
-//     fn update_config_dao(&self, env: Env, caller: Address, new_config: ArbitrageConfig);
-//     fn add_enhanced_pair_dao(&self, env: Env, caller: Address, pair: EnhancedStablecoinPair);
-//     fn add_trading_venue_dao(&self, env: Env, caller: Address, venue: TradingVenue);
-//     fn pause_pair_dao(&self, env: Env, caller: Address, stablecoin_symbol: Symbol);
-//     fn emergency_stop(&self, env: Env, caller: Address);
-//     fn transfer_admin(&self, env: Env, current_admin: Address, new_admin: Address);
-// }
 mod test;

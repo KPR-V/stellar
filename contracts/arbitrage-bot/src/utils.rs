@@ -47,11 +47,11 @@ pub fn check_price_freshness(
 
 pub fn calculate_position_size_with_risk(
     base_amount: i128,
-    volatility_score: u32, // 0-10000, where 10000 = 100%
-    max_risk_pct: u32,     // Maximum risk percentage in basis points
+    volatility_score: u32, 
+    max_risk_pct: u32,    
 ) -> i128 {
     let risk_adjustment = 10000u32.saturating_sub(volatility_score);
-    let size_multiplier = (risk_adjustment * max_risk_pct) / 100000000; // Normalize
+    let size_multiplier = (risk_adjustment * max_risk_pct) / 100000000; 
     (base_amount * size_multiplier as i128) / 10000
 }
 

@@ -1,6 +1,4 @@
 use soroban_sdk::{contractclient, contracttype, Address, Env};
-
-// Stellar DEX/AMM interface for trading
 #[contractclient(name = "StellarDEXClient")]
 pub trait StellarDEX {
     fn swap(
@@ -18,7 +16,7 @@ pub trait StellarDEX {
     fn get_pair_info(env: Env, token_a: Address, token_b: Address) -> Option<PairInfo>;
 }
 
-// Standard token interface for approvals and transfers
+
 #[contractclient(name = "TokenClient")]
 pub trait Token {
     fn approve(env: Env, spender: Address, amount: i128);
@@ -69,7 +67,6 @@ pub fn calculate_slippage_bps(expected_out: i128, actual_out: i128) -> u32 {
 }
 
 pub fn estimate_gas_cost(_env: &Env, complexity_score: u32) -> i128 {
-    // Base gas cost + complexity multiplier
     let base_cost = 50000i128;
     let variable_cost = (complexity_score as i128) * 1000;
     base_cost + variable_cost
@@ -82,19 +79,16 @@ pub fn simulate_trade(
     token_out: &Address,
     amount_in: i128,
 ) -> Option<SwapResult> {
-    // FIXED: The generated client methods don't include env parameter
-    // get_amounts_out(amount_in, token_a, token_b) -> i128
     let expected_out = dex_client.get_amounts_out(&amount_in, token_in, token_out);
 
     if expected_out > 0 {
-        // FIXED: get_pair_info(token_a, token_b) -> Option<PairInfo>
         if let Some(pair_info) = dex_client.get_pair_info(token_in, token_out) {
             let fees_paid = (amount_in * pair_info.fee_bps as i128) / 10000;
 
             Some(SwapResult {
                 amount_out: expected_out,
                 fees_paid,
-                price_impact_bps: 0, // Would calculate based on reserves
+                price_impact_bps: 0,
                 success: true,
             })
         } else {

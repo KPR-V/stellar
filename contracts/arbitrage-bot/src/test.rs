@@ -34,7 +34,6 @@ fn test_enhanced_pair_management() {
     let contract_id = env.register(ArbitrageBot, ());
     let client = ArbitrageBotClient::new(&env, &contract_id);
 
-    // Initialize
     let admin = Address::generate(&env);
     let config = ArbitrageConfig {
         min_profit_bps: 50,
@@ -47,7 +46,7 @@ fn test_enhanced_pair_management() {
 
     client.initialize_testnet(&admin, &config, &Address::generate(&env));
 
-    // Create enhanced pair
+  
     let base_pair = StablecoinPair {
         stablecoin_symbol: Symbol::new(&env, "USDC"),
         fiat_symbol: Symbol::new(&env, "USD"),
@@ -140,8 +139,8 @@ fn test_performance_metrics() {
 
     client.initialize_testnet(&admin, &config, &Address::generate(&env));
 
-    let metrics = client.get_performance_metrics(&30u32); // Last 30 days
-    assert_eq!(metrics.total_trades, 0); // No trades yet
+    let metrics = client.get_performance_metrics(&30u32); 
+    assert_eq!(metrics.total_trades, 0); 
     assert_eq!(metrics.total_profit, 0);
 }
 
@@ -163,7 +162,7 @@ fn test_pair_pause_functionality() {
 
     client.initialize_testnet(&admin, &config, &Address::generate(&env));
 
-    // Add a pair first
+ 
     let base_pair = StablecoinPair {
         stablecoin_symbol: Symbol::new(&env, "USDC"),
         fiat_symbol: Symbol::new(&env, "USD"),
@@ -177,7 +176,7 @@ fn test_pair_pause_functionality() {
     env.mock_all_auths();
     client.add_enhanced_pair(&admin, &enhanced_pair);
 
-    // Pause the pair
+   
     client.pause_pair(&admin, &Symbol::new(&env, "USDC"));
 }
 
@@ -200,19 +199,19 @@ fn test_enhanced_opportunity_scanning() {
     client.initialize_testnet(&admin, &config, &Address::generate(&env));
 
     let opportunities = client.scan_advanced_opportunities();
-    assert_eq!(opportunities.len(), 0); // No pairs added yet
+    assert_eq!(opportunities.len(), 0); 
 }
 
 #[test]
 fn test_oracle_integration_testnet_addresses() {
     let env = Env::default();
 
-    // Test that we can create addresses from the testnet oracle strings
+   
     let stellar_oracle = Address::from_string(&String::from_str(&env, STELLAR_ORACLE_TESTNET));
     let forex_oracle = Address::from_string(&String::from_str(&env, FOREX_ORACLE_TESTNET));
     let crypto_oracle = Address::from_string(&String::from_str(&env, CRYPTO_ORACLE_TESTNET));
 
-    // These should not panic and should create valid addresses
+  
     assert_eq!(
         stellar_oracle.to_string(),
         String::from_str(&env, STELLAR_ORACLE_TESTNET)
@@ -229,11 +228,11 @@ fn test_oracle_integration_testnet_addresses() {
 
 #[test]
 fn test_deviation_calculation() {
-    let current_price = 1_0200i128; // $1.0200
-    let target_price = 1_0000i128; // $1.0000
+    let current_price = 1_0200i128; 
+    let target_price = 1_0000i128;
 
     let deviation = calculate_deviation_bps(current_price, target_price);
-    assert_eq!(deviation, 200); // 2% deviation
+    assert_eq!(deviation, 200);
 }
 
 #[test]
@@ -249,16 +248,16 @@ fn test_profit_estimation() {
         stablecoin_price: 1_0200i128,
         fiat_rate: 1_0000i128,
         deviation_bps: 200,
-        estimated_profit: 200, // $0.02 per unit
+        estimated_profit: 200, 
         trade_direction: Symbol::new(&Env::default(), "SELL"),
         timestamp: 1234567890,
     };
 
-    let trade_amount = 10000_0000000i128; // $10,000
-    let trading_fees_bps = 30u32; // 0.3%
+    let trade_amount = 10000_0000000i128; 
+    let trading_fees_bps = 30u32; 
 
     let profit = calculate_profit_estimate(&opportunity, trade_amount, trading_fees_bps);
 
-    // Should account for fees and price difference
+ 
     assert!(profit > 0);
 }
