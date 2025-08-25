@@ -48,15 +48,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
       case 'get_user_balances':
         return await getUserBalances(userAddress);
       
-      case 'get_user_config':
-        return await getUserConfig(userAddress);
-      
-      case 'get_user_trade_history':
-        return await getUserTradeHistory(userAddress, params.limit);
-      
-      case 'get_user_performance_metrics':
-        return await getUserPerformanceMetrics(userAddress, params.days);
-      
       default:
         return NextResponse.json({
           success: false,
@@ -126,9 +117,6 @@ async function initializeUserAccount(
   riskLimits: any
 ): Promise<NextResponse<ApiResponse>> {
   try {
-    // Note: In a real implementation, you would need the user to sign this transaction
-    // This is just a simulation to show the structure
-    
     const contract = createContract();
     const account = await server.getAccount(userAddress);
     
@@ -151,7 +139,6 @@ async function initializeUserAccount(
     .setTimeout(30)
     .build();
 
-    // In practice, you would return this transaction to the frontend for signing
     const result = await server.simulateTransaction(transaction);
     
     if (SorobanRpc.Api.isSimulationError(result)) {
@@ -217,165 +204,19 @@ async function getUserBalances(userAddress: string): Promise<NextResponse<ApiRes
   }
 }
 
-// Get user configuration
-async function getUserConfig(userAddress: string): Promise<NextResponse<ApiResponse>> {
-  try {
-    const contract = createContract();
-    const account = await server.getAccount(userAddress);
-    
-    const transaction = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE
-    })
-    .addOperation(
-      contract.call(
-        'get_user_config',
-        addressToScVal(userAddress)
-      )
-    )
-    .setTimeout(30)
-    .build();
-
-    const result = await server.simulateTransaction(transaction);
-    
-    if (SorobanRpc.Api.isSimulationError(result)) {
-      throw new Error(`Contract simulation failed: ${result.error}`);
-    }
-
-    const config = parseArbitrageConfigFromResult(result.result?.retval);
-
-    return NextResponse.json({
-      success: true,
-      data: { config }
-    });
-
-  } catch (error) {
-    console.error('Error getting user config:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get user config'
-    });
-  }
-}
-
-// Get user trade history
-async function getUserTradeHistory(userAddress: string, limit: number = 10): Promise<NextResponse<ApiResponse>> {
-  try {
-    const contract = createContract();
-    const account = await server.getAccount(userAddress);
-    
-    const transaction = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE
-    })
-    .addOperation(
-      contract.call(
-        'get_user_trade_history',
-        addressToScVal(userAddress),
-        xdr.ScVal.scvU32(limit)
-      )
-    )
-    .setTimeout(30)
-    .build();
-
-    const result = await server.simulateTransaction(transaction);
-    
-    if (SorobanRpc.Api.isSimulationError(result)) {
-      throw new Error(`Contract simulation failed: ${result.error}`);
-    }
-
-    const tradeHistory = parseTradeHistoryFromResult(result.result?.retval);
-
-    return NextResponse.json({
-      success: true,
-      data: { tradeHistory }
-    });
-
-  } catch (error) {
-    console.error('Error getting user trade history:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get user trade history'
-    });
-  }
-}
-
-// Get user performance metrics
-async function getUserPerformanceMetrics(userAddress: string, days: number = 30): Promise<NextResponse<ApiResponse>> {
-  try {
-    const contract = createContract();
-    const account = await server.getAccount(userAddress);
-    
-    const transaction = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE
-    })
-    .addOperation(
-      contract.call(
-        'get_user_performance_metrics',
-        addressToScVal(userAddress),
-        xdr.ScVal.scvU32(days)
-      )
-    )
-    .setTimeout(30)
-    .build();
-
-    const result = await server.simulateTransaction(transaction);
-    
-    if (SorobanRpc.Api.isSimulationError(result)) {
-      throw new Error(`Contract simulation failed: ${result.error}`);
-    }
-
-    const metrics = parsePerformanceMetricsFromResult(result.result?.retval);
-
-    return NextResponse.json({
-      success: true,
-      data: { metrics }
-    });
-
-  } catch (error) {
-    console.error('Error getting user performance metrics:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get user performance metrics'
-    });
-  }
-}
-
 // Helper functions to convert data to XDR format
 function convertArbitrageConfigToXdr(config: any): xdr.ScVal {
   // This is a placeholder - you'll need to implement proper conversion
-  // based on your ArbitrageConfig structure
   return xdr.ScVal.scvVoid();
 }
 
 function convertRiskLimitsToXdr(riskLimits: any): xdr.ScVal {
   // This is a placeholder - you'll need to implement proper conversion
-  // based on your RiskLimits structure
   return xdr.ScVal.scvVoid();
 }
 
 // Helper functions to parse results from XDR
 function parseBalancesFromResult(result: any): any {
   // Parse the Map<Address, i128> result
-  // This is a placeholder - implement based on actual XDR structure
-  return {};
-}
-
-function parseArbitrageConfigFromResult(result: any): any {
-  // Parse the ArbitrageConfig result
-  // This is a placeholder - implement based on actual XDR structure
-  return {};
-}
-
-function parseTradeHistoryFromResult(result: any): any {
-  // Parse the Vec<TradeExecution> result
-  // This is a placeholder - implement based on actual XDR structure
-  return [];
-}
-
-function parsePerformanceMetricsFromResult(result: any): any {
-  // Parse the PerformanceMetrics result
-  // This is a placeholder - implement based on actual XDR structure
   return {};
 }

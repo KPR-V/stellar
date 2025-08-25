@@ -12,7 +12,6 @@ import {
   WalletConnectAllowedMethods,
   WalletConnectModule,
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
-import { contractService } from "../services/contract-service";
 import Message from "../components/message";
 import { useMessage } from "../hooks/useMessage";
 
@@ -31,82 +30,132 @@ export default function StellarConnect() {
     }
   }, []);
 
-const checkAccountInitialization = async (walletAddress: string) => {
-  setIsLoading(true);
+  const checkAccountInitialization = async (walletAddress: string) => {
+    setIsLoading(true);
 
-  try {
-    const initialized = await contractService.checkUserInitialized(walletAddress);
-    setIsInitialized(initialized);
+    try {
+      const response = await fetch("/api/contract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "check_user_initialized",
+          userAddress: walletAddress,
+        }),
+      });
 
-    if (initialized) {
-      showMessage("Account is already initialized. Welcome back!");
-      // Fetch user data
-      await fetchUserData(walletAddress);
-    } else {
-      showMessage("Account not initialized. Please complete the setup process.");
+      const data = await response.json();
+
+      if (data.success) {
+        setIsInitialized(data.data.isInitialized);
+
+        if (data.data.isInitialized) {
+          showMessage("Account is already initialized. Welcome back!");
+          // Fetch user data
+          await fetchUserData(walletAddress);
+        } else {
+          showMessage("Account not initialized. Please complete the setup process.");
+        }
+      } else {
+        throw new Error(data.error || "Failed to check account initialization.");
+      }
+    } catch (error) {
+      console.error("Error checking account initialization:", error);
+      showMessage("Error checking account status. Please try again.");
+      setIsInitialized(null);
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error("Error checking account initialization:", error);
-    showMessage("Error checking account status. Please try again.");
-    setIsInitialized(null);
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const fetchUserData = async (walletAddress: string) => {
     try {
-      // Fetch user data in parallel
-      const [balances, tradeHistory, performanceMetrics, userConfig] = await Promise.all([
-        contractService.getUserBalances(walletAddress),
-        contractService.getUserTradeHistory(walletAddress, 10),
-        contractService.getUserPerformanceMetrics(walletAddress, 30),
-        contractService.getUserConfig(walletAddress),
+      const [balancesResponse, configResponse] = await Promise.all([
+        fetch("/api/contract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "get_user_balances",
+            userAddress: walletAddress,
+          }),
+        }),
+        fetch("/api/contract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "get_user_config",
+            userAddress: walletAddress,
+          }),
+        }),
       ]);
 
-      console.log("User data loaded:", { balances, tradeHistory, performanceMetrics, userConfig });
-      showMessage("User data loaded successfully!");
+      const balancesData = await balancesResponse.json();
+      const configData = await configResponse.json();
+
+      if (balancesData.success && configData.success) {
+        console.log("User data loaded:", {
+          balances: balancesData.data.balances,
+          userConfig: configData.data,
+        });
+        showMessage("User data loaded successfully!");
+      } else {
+        throw new Error("Failed to fetch user data.");
+      }
     } catch (error) {
       console.error("Error fetching user data:", error);
       showMessage("Error loading user data.");
     }
   };
 
- const initializeAccount = async () => {
-  if (!address) return;
+  const initializeAccount = async () => {
+    if (!address) return;
 
-  setIsLoading(true);
+    setIsLoading(true);
 
-  try {
-    // Default configuration - you can replace with form inputs
-    const defaultConfig = {
-      enabled: true,
-      slippage_tolerance_bps: 100,
-      max_trade_size: 1000000000, // 1000 XLM in stroops
-      min_profit_threshold: 10000000, // 10 XLM in stroops
-    };
+    try {
+      // Default configuration - you can replace with form inputs
+      const defaultConfig = {
+        enabled: true,
+        slippage_tolerance_bps: 100,
+        max_trade_size: 1000000000, // 1000 XLM in stroops
+        min_profit_threshold: 10000000, // 10 XLM in stroops
+      };
 
-    const defaultRiskLimits = {
-      max_position_size: 5000000000, // 5000 XLM in stroops
-      max_daily_volume: 50000000000, // 50000 XLM in stroops
-    };
+      const defaultRiskLimits = {
+        max_position_size: 5000000000, // 5000 XLM in stroops
+        max_daily_volume: 50000000000, // 50000 XLM in stroops
+      };
 
-    const result = await contractService.initializeUserAccount(address, defaultConfig, defaultRiskLimits);
+      const response = await fetch("/api/contract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "initialize_user_account",
+          userAddress: address,
+          initialConfig: defaultConfig,
+          riskLimits: defaultRiskLimits,
+        }),
+      });
 
-    if (result.transaction) {
-      showMessage("Please sign the transaction in your wallet to complete initialization.");
-    } else {
-      showMessage("Account initialized successfully!");
-      setIsInitialized(true);
-      await fetchUserData(address);
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.data.transaction) {
+          showMessage("Please sign the transaction in your wallet to complete initialization.");
+        } else {
+          showMessage("Account initialized successfully!");
+          setIsInitialized(true);
+          await fetchUserData(address);
+        }
+      } else {
+        throw new Error(data.error || "Failed to initialize account.");
+      }
+    } catch (error) {
+      console.error("Error initializing account:", error);
+      showMessage("Failed to initialize account. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error("Error initializing account:", error);
-    showMessage("Failed to initialize account. Please try again.");
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const connectWallet = async () => {
     setIsLoading(true);
