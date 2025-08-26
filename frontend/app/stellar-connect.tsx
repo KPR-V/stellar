@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import {
   StellarWalletsKit,
   WalletNetwork,
@@ -14,21 +14,30 @@ import {
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import Message from "../components/message";
 import { useMessage } from "../hooks/useMessage";
+import { useWallet } from "../hooks/useWallet";
 
 export default function StellarConnect() {
-  const [address, setAddress] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
+  const {
+    address,
+    isConnected,
+    isInitialized,
+    isLoading,
+    setAddress,
+    setIsInitialized,
+    setIsLoading,
+    setPortfolioValue,
+    setProfitLoss
+  } = useWallet();
   const { messageState, showMessage, hideMessage } = useMessage();
 
   // Check stored wallet address on component mount
   useEffect(() => {
     const storedAddress = localStorage.getItem("stellarWalletAddress");
-    if (storedAddress) {
+    if (storedAddress && !address) {
       setAddress(storedAddress);
       checkAccountInitialization(storedAddress);
     }
-  }, []);
+  }, [address, setAddress]);
 
   const checkAccountInitialization = async (walletAddress: string) => {
     setIsLoading(true);
@@ -96,6 +105,15 @@ export default function StellarConnect() {
           balances: balancesData.data.balances,
           userConfig: configData.data,
         });
+        
+        // Update portfolio data in context
+        // Mock calculation - replace with actual portfolio calculation
+        const mockPortfolioValue = "1,234.56";
+        const mockProfitLoss = { value: "156.78", percentage: "14.52", isProfit: true };
+        
+        setPortfolioValue(mockPortfolioValue);
+        setProfitLoss(mockProfitLoss);
+        
         showMessage("User data loaded successfully!");
       } else {
         throw new Error("Failed to fetch user data.");
