@@ -110,7 +110,7 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
         {/* Profit/Loss */}
         <div className="flex-1 flex flex-col justify-center">
           <span className="text-white/50 text-xs font-medium mb-1">P/L (24h)</span>
-          {isConnected ? (
+          {isConnected && profitLoss ? (
             <div className="flex items-center justify-between">
               <span className={`text-lg font-semibold ${
                 profitLoss.isProfit ? 'text-green-400' : 'text-red-400'

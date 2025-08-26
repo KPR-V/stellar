@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 interface WalletContextType {
   address: string | null
   isConnected: boolean
-  isInitialized: boolean | null
   isLoading: boolean
   portfolioValue: string
   profitLoss: {
@@ -13,7 +12,6 @@ interface WalletContextType {
     isProfit: boolean
   }
   setAddress: (address: string | null) => void
-  setIsInitialized: (initialized: boolean | null) => void
   setIsLoading: (loading: boolean) => void
   setPortfolioValue: (value: string) => void
   setProfitLoss: (pl: { value: string; percentage: string; isProfit: boolean }) => void
@@ -27,7 +25,6 @@ interface WalletProviderProps {
 
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [address, setAddress] = useState<string | null>(null)
-  const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [portfolioValue, setPortfolioValue] = useState('0.00')
   const [profitLoss, setProfitLoss] = useState({
@@ -43,18 +40,23 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     const storedAddress = localStorage.getItem('stellarWalletAddress')
     if (storedAddress) {
       setAddress(storedAddress)
+      // Set hardcoded values for stored wallet
+      setPortfolioValue('0.00')
+      setProfitLoss({
+        value: '0.00',
+        percentage: '0.00',
+        isProfit: true
+      })
     }
   }, [])
 
   const value: WalletContextType = {
     address,
     isConnected,
-    isInitialized,
     isLoading,
     portfolioValue,
     profitLoss,
     setAddress,
-    setIsInitialized,
     setIsLoading,
     setPortfolioValue,
     setProfitLoss,

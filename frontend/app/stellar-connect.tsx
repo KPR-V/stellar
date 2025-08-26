@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect } from "react";
+import React from "react";
 import {
   StellarWalletsKit,
   WalletNetwork,
@@ -19,128 +19,33 @@ import { useWallet } from "../hooks/useWallet";
 export default function StellarConnect() {
   const {
     address,
-    isConnected,
-    isInitialized,
     isLoading,
     setAddress,
-    setIsInitialized,
     setIsLoading,
     setPortfolioValue,
     setProfitLoss
   } = useWallet();
   const { messageState, showMessage, hideMessage } = useMessage();
 
-  // Check stored wallet address on component mount
-  useEffect(() => {
-    const storedAddress = localStorage.getItem("stellarWalletAddress");
-    if (storedAddress && !address) {
-      setAddress(storedAddress);
-      checkAccountInitialization(storedAddress);
-    }
-  }, [address, setAddress]);
-
-  const checkAccountInitialization = async (walletAddress: string) => {
+  const initializeAccount = async (walletAddress: string) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/contract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "check_user_initialized",
-          userAddress: walletAddress,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setIsInitialized(data.data.isInitialized);
-
-        if (data.data.isInitialized) {
-          showMessage("Account is already initialized. Welcome back!");
-          // Fetch user data
-          await fetchUserData(walletAddress);
-        } else {
-          showMessage("Account not initialized. Please complete the setup process.");
-        }
-      } else {
-        throw new Error(data.error || "Failed to check account initialization.");
-      }
-    } catch (error) {
-      console.error("Error checking account initialization:", error);
-      showMessage("Error checking account status. Please try again.");
-      setIsInitialized(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchUserData = async (walletAddress: string) => {
-    try {
-      const [balancesResponse, configResponse] = await Promise.all([
-        fetch("/api/contract", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "get_user_balances",
-            userAddress: walletAddress,
-          }),
-        }),
-        fetch("/api/contract", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "get_user_config",
-            userAddress: walletAddress,
-          }),
-        }),
-      ]);
-
-      const balancesData = await balancesResponse.json();
-      const configData = await configResponse.json();
-
-      if (balancesData.success && configData.success) {
-        console.log("User data loaded:", {
-          balances: balancesData.data.balances,
-          userConfig: configData.data,
-        });
-        
-        // Update portfolio data in context
-        // Mock calculation - replace with actual portfolio calculation
-        const mockPortfolioValue = "1,234.56";
-        const mockProfitLoss = { value: "156.78", percentage: "14.52", isProfit: true };
-        
-        setPortfolioValue(mockPortfolioValue);
-        setProfitLoss(mockProfitLoss);
-        
-        showMessage("User data loaded successfully!");
-      } else {
-        throw new Error("Failed to fetch user data.");
-      }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-      showMessage("Error loading user data.");
-    }
-  };
-
-  const initializeAccount = async () => {
-    if (!address) return;
-
-    setIsLoading(true);
-
-    try {
-      // Default configuration - you can replace with form inputs
+      // Default configuration to match Rust ArbitrageConfig struct
       const defaultConfig = {
-        enabled: true,
-        slippage_tolerance_bps: 100,
+        min_profit_bps: 100, // 1%
         max_trade_size: 1000000000, // 1000 XLM in stroops
-        min_profit_threshold: 10000000, // 10 XLM in stroops
+        slippage_tolerance_bps: 100, // 1%
+        enabled: true,
+        max_gas_price: 100000, // 0.01 XLM in stroops
+        min_liquidity: 100000000, // 100 XLM in stroops
       };
 
       const defaultRiskLimits = {
-        max_position_size: 5000000000, // 5000 XLM in stroops
         max_daily_volume: 50000000000, // 50000 XLM in stroops
+        max_position_size: 5000000000, // 5000 XLM in stroops
+        max_drawdown_bps: 2000, // 20%
+        var_limit: 1000000000, // 1000 XLM in stroops
       };
 
       const response = await fetch("/api/contract", {
@@ -148,7 +53,7 @@ export default function StellarConnect() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "initialize_user_account",
-          userAddress: address,
+          userAddress: walletAddress,
           initialConfig: defaultConfig,
           riskLimits: defaultRiskLimits,
         }),
@@ -157,13 +62,7 @@ export default function StellarConnect() {
       const data = await response.json();
 
       if (data.success) {
-        if (data.data.transaction) {
-          showMessage("Please sign the transaction in your wallet to complete initialization.");
-        } else {
-          showMessage("Account initialized successfully!");
-          setIsInitialized(true);
-          await fetchUserData(address);
-        }
+        showMessage("Account initialized successfully!");
       } else {
         throw new Error(data.error || "Failed to initialize account.");
       }
@@ -180,7 +79,7 @@ export default function StellarConnect() {
 
     try {
       const kit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET, // Changed to TESTNET
+        network: WalletNetwork.TESTNET,
         modules: [
           new xBullModule(),
           new FreighterModule(),
@@ -210,8 +109,16 @@ export default function StellarConnect() {
               localStorage.setItem("stellarWalletAddress", walletAddress);
               showMessage("Wallet connected successfully!");
 
-              // Check if account is initialized
-              await checkAccountInitialization(walletAddress);
+              // Set hardcoded portfolio values as requested
+              setPortfolioValue('0.00');
+              setProfitLoss({
+                value: '0.00',
+                percentage: '0.00',
+                isProfit: true
+              });
+
+              // Initialize account directly
+              await initializeAccount(walletAddress);
             }
           } catch (error) {
             console.error("Error connecting wallet:", error);
@@ -235,8 +142,16 @@ export default function StellarConnect() {
 
   const disconnectWallet = () => {
     setAddress(null);
-    setIsInitialized(null);
     localStorage.removeItem("stellarWalletAddress");
+    
+    // Reset portfolio values
+    setPortfolioValue('0.00');
+    setProfitLoss({
+      value: '0.00',
+      percentage: '0.00',
+      isProfit: true
+    });
+    
     showMessage("Wallet disconnected successfully.");
   };
 
@@ -267,28 +182,6 @@ export default function StellarConnect() {
                 {`${address.slice(0, 6)}...${address.slice(-4)}`}
               </span>
             </div>
-
-            {isInitialized === false && (
-              <button
-                onClick={initializeAccount}
-                disabled={isLoading}
-                className="
-                  bg-blue-500/20 border border-blue-400/30 rounded-full
-                  px-4 py-1 text-xs text-blue-400 font-medium
-                  hover:bg-blue-500/30 hover:border-blue-400/50
-                  transition-all duration-300 disabled:opacity-50
-                  font-raleway
-                "
-              >
-                {isLoading ? "Initializing..." : "Initialize Account"}
-              </button>
-            )}
-
-            {isInitialized === true && (
-              <div className="text-green-400 text-xs font-medium px-2 py-1 bg-green-400/10 rounded-full border border-green-400/20 font-raleway">
-                ✓ Initialized
-              </div>
-            )}
 
             <button
               onClick={disconnectWallet}
