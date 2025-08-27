@@ -21,7 +21,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return await getUserConfig(userAddress);
     }
 
-    // ✅ Add update user config action
     if (action === 'update_user_config') {
       return await updateUserConfig(userAddress, params.newConfig);
     }
@@ -32,6 +31,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (action === 'get_user_balances') {
       return await getUserBalances(userAddress);
+    }
+
+     if (action === 'deposit_user_funds') {
+      return await depositUserFunds(userAddress, params.tokenAddress, params.amount);
+    }
+
+    if (action === 'withdraw_user_funds') {
+      return await withdrawUserFunds(userAddress, params.tokenAddress, params.amount);
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
@@ -288,4 +295,93 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
     });
   }
 }
+
+async function depositUserFunds(
+  userAddress: string,
+  tokenAddress: string,
+  amount: string,
+  isNative: boolean = true
+): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+      publicKey: userAddress,
+    });
+
+    // Handle native XLM with wrapped contract (replace with actual testnet wrapped XLM if different)
+    const finalTokenAddress = isNative ? 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT' : tokenAddress;
+
+    const result = await client.deposit_user_funds({
+      user: userAddress,
+      token_address: finalTokenAddress,
+      amount: BigInt(amount)
+    }, {
+      simulate: true
+    });
+
+    const transactionXdr = result.toXDR();
+
+    return NextResponse.json({
+      success: true,
+      data: { 
+        message: 'Deposit transaction prepared for signing',
+        transactionXdr: transactionXdr
+      }
+    });
+
+  } catch (error) {
+    console.error('Error preparing deposit transaction:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to prepare deposit transaction'
+    });
+  }
+}
+
+// Similarly update withdrawUserFunds (assuming similar structure)
+async function withdrawUserFunds(
+  userAddress: string,
+  tokenAddress: string,
+  amount: string,
+  isNative: boolean = true
+): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+      publicKey: userAddress,
+    });
+
+    const finalTokenAddress = isNative ? 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQAHHAGCN4CT' : tokenAddress;
+
+    const result = await client.withdraw_user_funds({
+      user: userAddress,
+      token_address: finalTokenAddress,
+      amount: BigInt(amount)
+    }, {
+      simulate: true
+    });
+
+    const transactionXdr = result.toXDR();
+
+    return NextResponse.json({
+      success: true,
+      data: { 
+        message: 'Withdrawal transaction prepared for signing',
+        transactionXdr: transactionXdr
+      }
+    });
+
+  } catch (error) {
+    console.error('Error preparing withdrawal transaction:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to prepare withdrawal transaction'
+    });
+  }
+}
+
 
