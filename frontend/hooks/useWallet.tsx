@@ -1,5 +1,6 @@
 'use client'
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit"
 
 interface WalletContextType {
   address: string | null
@@ -11,10 +12,12 @@ interface WalletContextType {
     percentage: string
     isProfit: boolean
   }
+  walletKit: StellarWalletsKit | null
   setAddress: (address: string | null) => void
   setIsLoading: (loading: boolean) => void
   setPortfolioValue: (value: string) => void
   setProfitLoss: (pl: { value: string; percentage: string; isProfit: boolean }) => void
+  setWalletKit: (kit: StellarWalletsKit | null) => void // ✅ Add setWalletKit
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
@@ -32,6 +35,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     percentage: '0.00',
     isProfit: true
   })
+  const [walletKit, setWalletKit] = useState<StellarWalletsKit | null>(null)
 
   const isConnected = Boolean(address)
 
@@ -56,10 +60,12 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     isLoading,
     portfolioValue,
     profitLoss,
+    walletKit,
     setAddress,
     setIsLoading,
     setPortfolioValue,
     setProfitLoss,
+    setWalletKit,
   }
 
   return (

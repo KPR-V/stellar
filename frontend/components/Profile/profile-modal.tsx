@@ -25,7 +25,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
       case 'Transaction History':
         return <TransactionTab />
       case 'Settings':
-        return <SettingsTab />
+        return <SettingsTab key={activeTab} /> // Add key to force re-render when tab changes
       default:
         return <ProfileStats />
     }

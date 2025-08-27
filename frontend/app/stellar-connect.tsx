@@ -23,31 +23,32 @@ export default function StellarConnect() {
     setAddress,
     setIsLoading,
     setPortfolioValue,
-    setProfitLoss
+    setProfitLoss,
+    setWalletKit
   } = useWallet();
   const { messageState, showMessage, hideMessage } = useMessage();
 
-  const initializeAccount = async (walletAddress: string) => {
+  const initializeAccount = async (walletAddress: string ,kit: StellarWalletsKit) => {
     setIsLoading(true);
 
     try {
-      // Default configuration to match Rust ArbitrageConfig struct
       const defaultConfig = {
-        min_profit_bps: 100, // 1%
-        max_trade_size: 1000000000, // 1000 XLM in stroops
-        slippage_tolerance_bps: 100, // 1%
+        min_profit_bps: 100,
+        max_trade_size: 1000000000,
+        slippage_tolerance_bps: 100,
         enabled: true,
-        max_gas_price: 100000, // 0.01 XLM in stroops
-        min_liquidity: 100000000, // 100 XLM in stroops
+        max_gas_price: 100000,
+        min_liquidity: 100000000,
       };
 
       const defaultRiskLimits = {
-        max_daily_volume: 50000000000, // 50000 XLM in stroops
-        max_position_size: 5000000000, // 5000 XLM in stroops
-        max_drawdown_bps: 2000, // 20%
-        var_limit: 1000000000, // 1000 XLM in stroops
+        max_daily_volume: 50000000000,
+        max_position_size: 5000000000,
+        max_drawdown_bps: 2000,
+        var_limit: 1000000000,
       };
 
+      // ✅ Step 1: Get transaction XDR from server
       const response = await fetch("/api/contract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,20 +62,44 @@ export default function StellarConnect() {
 
       const data = await response.json();
 
-       if (data.success) {
-      showMessage("🎉 Wallet connected and account initialized successfully!");
-    } else {
-      throw new Error(data.error || "Failed to initialize account.");
+      if (data.success) {
+        // ✅ Step 2: Sign transaction with wallet
+        const { signedTxXdr } = await kit.signTransaction(data.data.transactionXdr, {
+          address: walletAddress,
+          networkPassphrase: WalletNetwork.TESTNET,
+        });
+
+        // ✅ Step 3: Submit signed transaction (either via server or directly)
+        await submitSignedTransaction(signedTxXdr);
+        
+        showMessage("🎉 Account initialized successfully on blockchain!");
+      } else {
+        throw new Error(data.error || "Failed to prepare transaction.");
+      }
+    } catch (error) {
+      console.error("Error initializing account:", error);
+      showMessage("Failed to initialize account. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error("Error initializing account:", error);
-    showMessage("❌ Wallet connected but failed to initialize account. Please try again.");
-  } finally {
-    setIsLoading(false);
-  }
   };
 
-  const connectWallet = async () => {
+  // Helper function to submit signed transaction
+  const submitSignedTransaction = async (signedXdr: string) => {
+    // Option A: Submit via your API
+    const response = await fetch("/api/contract/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedXdr }),
+    });
+
+    // Option B: Or submit directly to Stellar network
+    // const server = new StellarRpc.Server('https://soroban-testnet.stellar.org');
+    // const transaction = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
+    // await server.sendTransaction(transaction);
+  };
+
+ const connectWallet = async () => {
     setIsLoading(true);
 
     try {
@@ -84,17 +109,11 @@ export default function StellarConnect() {
           new xBullModule(),
           new FreighterModule(),
           new AlbedoModule(),
-          new WalletConnectModule({
-            url: "http://localhost:3000",
-            projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
-            method: WalletConnectAllowedMethods.SIGN,
-            description: "Stellar Arbitrage Bot",
-            name: "CalibreX Arbitrage Bot",
-            icons: ["https://yourdomain.com/logo.png"],
-            network: WalletNetwork.TESTNET,
-          }),
+          // ... other modules
         ],
       });
+
+      setWalletKit(kit);
 
       await kit.openModal({
         modalTitle: "Connect Your Stellar Wallet",
@@ -109,7 +128,6 @@ export default function StellarConnect() {
               localStorage.setItem("stellarWalletAddress", walletAddress);
               showMessage("Wallet connected successfully!");
 
-              // Set hardcoded portfolio values as requested
               setPortfolioValue('0.00');
               setProfitLoss({
                 value: '0.00',
@@ -117,8 +135,8 @@ export default function StellarConnect() {
                 isProfit: true
               });
 
-              // Initialize account directly
-              await initializeAccount(walletAddress);
+              // ✅ Now initialize account with proper wallet integration
+              await initializeAccount(walletAddress, kit);
             }
           } catch (error) {
             console.error("Error connecting wallet:", error);
@@ -142,6 +160,7 @@ export default function StellarConnect() {
 
   const disconnectWallet = () => {
     setAddress(null);
+    setWalletKit(null);
     localStorage.removeItem("stellarWalletAddress");
     
     // Reset portfolio values
