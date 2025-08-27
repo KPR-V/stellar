@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../src/bindings/src'; 
 import { Networks } from '@stellar/stellar-sdk';
+import { SorobanRpc, Address as StellarAddress } from '@stellar/stellar-sdk';
+
 
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
@@ -22,6 +24,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // ✅ Add update user config action
     if (action === 'update_user_config') {
       return await updateUserConfig(userAddress, params.newConfig);
+    }
+
+     if (action === 'get_user_trade_history') {
+      return await getUserTradeHistory(userAddress, params.limit || 50);
+    }
+
+    if (action === 'get_user_balances') {
+      return await getUserBalances(userAddress);
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
@@ -102,7 +112,6 @@ async function getUserConfig(userAddress: string): Promise<NextResponse> {
       simulate: true
     });
 
-    // ✅ Convert BigInt values to strings before serialization
     const configWithStrings = {
       enabled: result.result.enabled,
       max_gas_price: result.result.max_gas_price?.toString(),
@@ -119,21 +128,6 @@ async function getUserConfig(userAddress: string): Promise<NextResponse> {
         config: configWithStrings
       }
     });
-
-    // Alternative: Use custom replacer function
-    // return new NextResponse(
-    //   JSON.stringify({
-    //     success: true,
-    //     data: {
-    //       message: 'User config fetched successfully!',
-    //       config: result.result
-    //     }
-    //   }, (key, value) => typeof value === 'bigint' ? value.toString() : value),
-    //   {
-    //     status: 200,
-    //     headers: { 'Content-Type': 'application/json' }
-    //   }
-    // );
 
   } catch (error) {
     console.error('Error fetching user config:', error);
@@ -189,3 +183,109 @@ async function updateUserConfig(
     });
   }
 }
+
+async function getUserTradeHistory(
+  userAddress: string,
+  limit: number = 50
+): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    const result = await client.get_user_trade_history({
+      user: userAddress,
+      limit: limit
+    }, {
+      simulate: true
+    });
+
+    // ✅ Format the trade history data and handle BigInt serialization
+    const formattedTrades = result.result.map((trade: any) => ({
+      executed_amount: trade.executed_amount?.toString(),
+      actual_profit: trade.actual_profit?.toString(),
+      gas_cost: trade.gas_cost?.toString(),
+      execution_timestamp: trade.execution_timestamp?.toString(),
+      status: trade.status,
+      opportunity: {
+        pair: trade.opportunity.pair,
+        stablecoin_price: trade.opportunity.stablecoin_price?.toString(),
+        fiat_rate: trade.opportunity.fiat_rate?.toString(),
+        deviation_bps: trade.opportunity.deviation_bps,
+        estimated_profit: trade.opportunity.estimated_profit?.toString(),
+        trade_direction: trade.opportunity.trade_direction,
+        timestamp: trade.opportunity.timestamp?.toString()
+      }
+    }));
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Trade history fetched successfully!',
+        trades: formattedTrades,
+        count: formattedTrades.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching trade history:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch trade history'
+    });
+  }
+}
+
+
+async function getUserBalances(userAddress: string): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    const result = await client.get_user_balances({
+      user: userAddress
+    }, {
+      simulate: true
+    });
+
+    // ✅ Convert Map<Address, i128> to serializable format
+    const balancesWithStrings: { [key: string]: string } = {};
+    
+    // The result.result is a Map, we need to iterate through it
+    if (result.result && typeof result.result === 'object') {
+      for (const [tokenAddress, balance] of Object.entries(result.result)) {
+        balancesWithStrings[tokenAddress] = balance.toString();
+      }
+    }
+
+    // Calculate total portfolio value (simplified - you might want to use real token prices)
+    let totalValue = 0;
+    for (const balance of Object.values(balancesWithStrings)) {
+      // Simple conversion assuming 1:1 ratio for demonstration
+      // In real implementation, you'd multiply by token prices
+      totalValue += parseFloat(balance) / 10000000; // Convert from stroops
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'User balances fetched successfully!',
+        balances: balancesWithStrings,
+        portfolioValue: totalValue.toFixed(2)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user balances:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch user balances'
+    });
+  }
+}
+
