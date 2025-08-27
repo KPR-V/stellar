@@ -61,17 +61,17 @@ export default function StellarConnect() {
 
       const data = await response.json();
 
-      if (data.success) {
-        showMessage("Account initialized successfully!");
-      } else {
-        throw new Error(data.error || "Failed to initialize account.");
-      }
-    } catch (error) {
-      console.error("Error initializing account:", error);
-      showMessage("Failed to initialize account. Please try again.");
-    } finally {
-      setIsLoading(false);
+       if (data.success) {
+      showMessage("🎉 Wallet connected and account initialized successfully!");
+    } else {
+      throw new Error(data.error || "Failed to initialize account.");
     }
+  } catch (error) {
+    console.error("Error initializing account:", error);
+    showMessage("❌ Wallet connected but failed to initialize account. Please try again.");
+  } finally {
+    setIsLoading(false);
+  }
   };
 
   const connectWallet = async () => {

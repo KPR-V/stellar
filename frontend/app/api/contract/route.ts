@@ -1,147 +1,68 @@
+// api/contract/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  Contract, 
-  SorobanRpc, 
-  TransactionBuilder, 
-  Networks, 
-  BASE_FEE, 
-  xdr,
-  Address,
-  nativeToScVal,
-} from '@stellar/stellar-sdk';
+import { Client } from '../../../src/bindings/src'; 
+import { Networks } from '@stellar/stellar-sdk';
 
-// Your deployed contract address (replace with actual address)
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS!;
-const NETWORK_PASSPHRASE = Networks.TESTNET;
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
-// Initialize Soroban RPC server
-const server = new SorobanRpc.Server(RPC_URL);
-
-interface ApiResponse {
-  success: boolean;
-  data?: any;
-  error?: string;
-}
-
-// Helper function to create contract instance
-function createContract(): Contract {
-  return new Contract(CONTRACT_ADDRESS);
-}
-
-// Helper function to convert address string to ScVal
-function addressToScVal(address: string): xdr.ScVal {
-  return Address.fromString(address).toScVal();
-}
-
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse>> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();
     const { action, userAddress, ...params } = body;
 
-    switch (action) {
-      case 'initialize_user_account':
-        return await initializeUserAccount(userAddress, params.initialConfig, params.riskLimits);
-      
-      default:
-        return NextResponse.json({
-          success: false,
-          error: 'Invalid action'
-        }, { status: 400 });
+    if (action === 'initialize_user_account') {
+      return await initializeUserAccountWithBindings(userAddress, params.initialConfig, params.riskLimits);
     }
+
+    return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
-    console.error('API Error:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }
 
-// Initialize user account
-async function initializeUserAccount(
-  userAddress: string, 
-  initialConfig: any, 
+async function initializeUserAccountWithBindings(
+  userAddress: string,
+  initialConfig: any,
   riskLimits: any
-): Promise<NextResponse<ApiResponse>> {
+): Promise<NextResponse> {
   try {
-    const contract = createContract();
-    const account = await server.getAccount(userAddress);
-    
-    // Convert config to XDR format (ArbitrageConfig struct)
-    const configXdr = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({
-        key: nativeToScVal("min_profit_bps", { type: "symbol" }),
-        val: nativeToScVal(initialConfig.min_profit_bps, { type: "u32" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("max_trade_size", { type: "symbol" }),
-        val: nativeToScVal(initialConfig.max_trade_size, { type: "i128" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("slippage_tolerance_bps", { type: "symbol" }),
-        val: nativeToScVal(initialConfig.slippage_tolerance_bps, { type: "u32" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("enabled", { type: "symbol" }),
-        val: nativeToScVal(initialConfig.enabled, { type: "bool" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("max_gas_price", { type: "symbol" }),
-        val: nativeToScVal(initialConfig.max_gas_price, { type: "i128" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("min_liquidity", { type: "symbol" }),
-        val: nativeToScVal(initialConfig.min_liquidity, { type: "i128" })
-      })
-    ]);
-    
-    // Convert risk limits to XDR format (RiskLimits struct)
-    const riskLimitsXdr = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({
-        key: nativeToScVal("max_daily_volume", { type: "symbol" }),
-        val: nativeToScVal(riskLimits.max_daily_volume, { type: "i128" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("max_position_size", { type: "symbol" }),
-        val: nativeToScVal(riskLimits.max_position_size, { type: "i128" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("max_drawdown_bps", { type: "symbol" }),
-        val: nativeToScVal(riskLimits.max_drawdown_bps, { type: "u32" })
-      }),
-      new xdr.ScMapEntry({
-        key: nativeToScVal("var_limit", { type: "symbol" }),
-        val: nativeToScVal(riskLimits.var_limit, { type: "i128" })
-      })
-    ]);
-    
-    const transaction = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE
-    })
-    .addOperation(
-      contract.call(
-        'initialize_user_account',
-        addressToScVal(userAddress),
-        configXdr,
-        riskLimitsXdr
-      )
-    )
-    .setTimeout(30)
-    .build();
+    // ✅ Create Client instance (not ArbitrageBotClient)
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
 
-    const result = await server.simulateTransaction(transaction);
-    
-    if (SorobanRpc.Api.isSimulationError(result)) {
-      throw new Error(`Contract simulation failed: ${result.error}`);
-    }
+    // ✅ Call the contract method with proper types
+    const result = await client.initialize_user_account({
+      user: userAddress,
+      initial_config: {
+        enabled: initialConfig.enabled,
+        max_gas_price: BigInt(initialConfig.max_gas_price),
+        max_trade_size: BigInt(initialConfig.max_trade_size),
+        min_liquidity: BigInt(initialConfig.min_liquidity),
+        min_profit_bps: initialConfig.min_profit_bps,
+        slippage_tolerance_bps: initialConfig.slippage_tolerance_bps
+      },
+      risk_limits: {
+        max_daily_volume: BigInt(riskLimits.max_daily_volume),
+        max_position_size: BigInt(riskLimits.max_position_size),
+        max_drawdown_bps: riskLimits.max_drawdown_bps,
+        var_limit: BigInt(riskLimits.var_limit)
+      }
+    }, {
+      simulate: true // Only simulate for now
+    });
 
     return NextResponse.json({
       success: true,
       data: { 
-        message: 'Account initialized successfully!',
-        transaction: transaction.toXDR()
+        message: 'Account initialized successfully!', 
+        result: result 
       }
     });
 
@@ -153,4 +74,3 @@ async function initializeUserAccount(
     });
   }
 }
-
