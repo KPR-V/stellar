@@ -228,32 +228,49 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
       
       // Handle SAC deployment requirement
       if (result.error && result.error.includes('Stellar Asset Contract needs to be deployed')) {
-        showMessage('⚠️ Native XLM Stellar Asset Contract needs to be deployed first. This is a one-time setup required for XLM transactions.');
+        const assetName = result.details?.assetCode || depositForm.asset;
+        const isNativeAsset = result.details?.assetType === 'native' || depositForm.isNative;
+        
+        showMessage(`⚠️ ${assetName} Stellar Asset Contract needs to be deployed first. This is a one-time setup required for ${assetName} transactions.`);
         
         const shouldDeploy = confirm(
-          `The native XLM Stellar Asset Contract (SAC) needs to be deployed first. This is a one-time setup.\n\n` +
+          `The ${assetName} Stellar Asset Contract (SAC) needs to be deployed first. This is a one-time setup.\n\n` +
           `Would you like to deploy it now? This will require a small transaction fee.`
         )
         
         if (shouldDeploy) {
           try {
-            console.log('Preparing SAC deployment...')
+            console.log(`Preparing ${assetName} SAC deployment...`)
+            
+            // Prepare deployment request body
+            const deployRequestBody = {
+              userAddress: address,
+              assetType: result.details?.assetType || (depositForm.isNative ? 'native' : 'token'),
+              assetCode: result.details?.assetCode || depositForm.asset,
+              ...(result.details?.issuerAddress 
+                ? { issuerAddress: result.details.issuerAddress }
+                : (!depositForm.isNative && { issuerAddress: depositForm.tokenAddress })
+              )
+            };
+            
+            console.log('Deploy request:', deployRequestBody);
+            
             const deployResponse = await fetch('/api/deploy-sac', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({ userAddress: address }),
+              body: JSON.stringify(deployRequestBody),
             })
 
             const deployResult = await deployResponse.json()
 
             if (deployResult.success) {
               if (deployResult.data.alreadyExists) {
-                showMessage('✅ Native XLM SAC is already deployed! Please try your deposit again.')
+                showMessage(`✅ ${assetName} SAC is already deployed! Please try your deposit again.`)
               } else {
-                console.log('Signing SAC deployment transaction...')
-                showMessage('🚀 Preparing SAC deployment transaction for signing...')
+                console.log(`Signing ${assetName} SAC deployment transaction...`)
+                showMessage(`🚀 Preparing ${assetName} SAC deployment transaction for signing...`)
                 
                 const deployedSigned = await walletKit.signTransaction(deployResult.data.transactionXdr, {
                   address,
@@ -272,9 +289,9 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
                 const deploySubmitResult = await deploySubmitResponse.json()
 
                 if (deploySubmitResult.success) {
-                  showMessage('🎉 Native XLM SAC deployed successfully! Please try your deposit again.')
+                  showMessage(`🎉 ${assetName} SAC deployed successfully! Please try your deposit again.`)
                 } else {
-                  showMessage(`❌ SAC deployment failed: ${deploySubmitResult.error}`)
+                  showMessage(`❌ ${assetName} SAC deployment failed: ${deploySubmitResult.error}`)
                 }
               }
             } else {

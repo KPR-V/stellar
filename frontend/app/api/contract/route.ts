@@ -483,9 +483,7 @@ async function depositUserFunds(
         // Map known issuer addresses to asset codes
         const knownAssets: { [key: string]: string } = {
           'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',
-          'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU': 'USDC', // Old address
-          'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC', // New EURC address
-          'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGX47OAFQNI3OOQKAIJE22LZRY': 'EUROC' // Old EUROC address
+          'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC',  
         };
         
         if (knownAssets[tokenAddress]) {
@@ -582,13 +580,47 @@ async function depositUserFunds(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     if (errorMessage.includes('MissingValue') || errorMessage.includes('contract instance')) {
+      // Check if this is a native XLM issue or a specific token issue
+      let errorDetails;
+      let errorMsg;
+      
+      if (isNative) {
+        errorMsg = 'Native XLM Stellar Asset Contract needs to be deployed. Please deploy the SAC first or contact support.';
+        errorDetails = {
+          suggestion: 'The native XLM Stellar Asset Contract (SAC) has not been deployed on this network. This is required for token transfers.',
+          contractAddress: Asset.native().contractId(Networks.TESTNET),
+          assetType: 'native',
+          assetCode: 'XLM'
+        };
+      } else {
+        // Handle specific token SAC deployment needs
+        const tokenInfo = assetCode ? `${assetCode} token` : 'Token';
+        errorMsg = `${tokenInfo} Stellar Asset Contract needs to be deployed. Please deploy the ${assetCode || 'token'} SAC first.`;
+        
+        // Calculate contract address for error details (fallback approach)
+        let contractAddress;
+        try {
+          // Recalculate the contract address for error details
+          const code = assetCode || 'USDC';
+          const asset = new Asset(code, tokenAddress);
+          contractAddress = asset.contractId(Networks.TESTNET);
+        } catch {
+          contractAddress = tokenAddress; // Fallback to issuer address
+        }
+        
+        errorDetails = {
+          suggestion: `The ${tokenInfo} Stellar Asset Contract (SAC) has not been deployed on this network. This is required for ${assetCode || 'token'} transfers.`,
+          contractAddress: contractAddress,
+          assetType: 'token',
+          assetCode: assetCode,
+          issuerAddress: tokenAddress
+        };
+      }
+      
       return NextResponse.json({
         success: false,
-        error: 'Native XLM Stellar Asset Contract needs to be deployed. Please deploy the SAC first or contact support.',
-        details: {
-          suggestion: 'The native XLM Stellar Asset Contract (SAC) has not been deployed on this network. This is required for token transfers.',
-          nativeContractAddress: Asset.native().contractId(Networks.TESTNET)
-        }
+        error: errorMsg,
+        details: errorDetails
       }, { status: 400 });
     }
     
