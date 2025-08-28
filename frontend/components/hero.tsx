@@ -35,9 +35,9 @@ const Hero = () => {
             </p>
           </div>
 
-          {/* Statistics Card - Aligned with description */}
+          {/* Statistics Card - Will position itself fixed */}
           <div className="hidden lg:block">
-            <StatisticsCard className="relative bottom-0 right-0" />
+            <StatisticsCard />
           </div>
         </div>
 

@@ -38,7 +38,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-none flex items-center justify-center z-[9999] font-raleway">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 font-raleway">
       <div className="bg-black/80 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl w-[800px] h-[600px] overflow-hidden relative">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/20">

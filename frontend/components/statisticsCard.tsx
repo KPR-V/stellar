@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { Copy, Check, RefreshCw } from 'lucide-react'
 import { useWallet } from '../hooks/useWallet'
+import { useRebalance } from '../hooks/useRebalance'
+import ReBalanceModal from './Re-Balance/reBalanceModal'
 
 interface StatisticsCardProps {
   className?: string
@@ -14,8 +16,11 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
     isConnected,
     profitLoss
   } = useWallet()
+  const { openModal } = useRebalance()
 
   const [portfolioValue, setPortfolioValue] = useState('0.00')
+  const [balancesWithPrices, setBalancesWithPrices] = useState<{[key: string]: { balance: string, usdValue: number, price: number }}>({})
+  const [tokenPrices, setTokenPrices] = useState<{[key: string]: number}>({})
   const [isLoading, setIsLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isCopied, setIsCopied] = useState(false)
@@ -60,6 +65,8 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
         })
         
         setPortfolioValue(data.data.portfolioValue)
+        setBalancesWithPrices(data.data.balancesWithPrices || {})
+        setTokenPrices(data.data.tokenPrices || {})
         setLastUpdated(new Date())
       } else {
         console.error('❌ StatisticsCard: Failed to fetch user balance:', data.error)
@@ -91,18 +98,23 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
   }
 
   return (
-    <div className={`
-      ${className.includes('relative') 
-        ? 'relative' 
-        : 'fixed bottom-6 right-6 z-40'
-      }
-      bg-black/30 backdrop-blur-sm border border-white/20 rounded-xl
-      p-4 w-96 h-36
-      transition-all duration-300 ease-out
-      hover:border-white/30 hover:bg-black/35 hover:shadow-lg hover:shadow-white/5
-      font-raleway
-      ${className}
-    `}>
+    <>
+      <ReBalanceModal 
+        portfolioValue={portfolioValue}
+        balancesWithPrices={balancesWithPrices}
+        tokenPrices={tokenPrices}
+        isLoading={isLoading}
+        lastUpdated={lastUpdated}
+      />
+      <div className={`
+        relative
+        bg-black/30 backdrop-blur-sm border border-white/20 rounded-xl
+        p-4 w-96 h-36
+        transition-all duration-300 ease-out
+        hover:border-white/30 hover:bg-black/35 hover:shadow-lg hover:shadow-white/5
+        font-raleway
+        ${className}
+      `}>
       {/* Top Row - Connection Status & Re-Balance Button */}
       <div className="flex items-start justify-between mb-3">
         {/* Connection Status */}
@@ -151,7 +163,10 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
             </button>
           )}
           
-          <button className="
+          <button 
+            onClick={openModal}
+            disabled={!isConnected}
+            className="
             bg-white text-black rounded-lg
             px-4 py-1.5 text-xs font-medium outline-none
             transition-all duration-300 ease-out
@@ -170,7 +185,7 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
       <div className="flex items-center h-16">
         {/* Portfolio Value */}
         <div className="flex-1 flex flex-col justify-center">
-          <span className="text-white/50 text-xs font-medium mb-1">Contract Value</span>
+          <span className="text-white/50 text-xs font-medium mb-1">Portfolio Value</span>
           <span className="text-white/90 text-lg font-semibold">
             {isConnected ? `$${portfolioValue}` : 'N/A'}
           </span>
@@ -208,6 +223,7 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
         </div>
       </div>
     </div>
+    </>
   )
 }
 
