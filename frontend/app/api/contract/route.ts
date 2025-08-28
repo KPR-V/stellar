@@ -4,6 +4,15 @@ import { Client } from '../../../src/bindings/src';
 import { Networks, TransactionBuilder, Asset } from '@stellar/stellar-sdk';
 import { SorobanRpc, Address as StellarAddress } from '@stellar/stellar-sdk';
 
+// ✅ Helper to safely stringify objects with BigInt values
+const safeStringify = (obj: any) => {
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    return value;
+  });
+};
 
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
@@ -38,11 +47,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
      if (action === 'deposit_user_funds') {
-      return await depositUserFunds(userAddress, params.tokenAddress, params.amount);
+      return await depositUserFunds(userAddress, params.tokenAddress, params.amount, params.isNative, params.assetCode);
     }
 
     if (action === 'withdraw_user_funds') {
-      return await withdrawUserFunds(userAddress, params.tokenAddress, params.amount);
+      return await withdrawUserFunds(userAddress, params.tokenAddress, params.amount, params.isNative, params.assetCode);
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
@@ -280,30 +289,102 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
       simulate: true
     });
 
-    // ✅ Convert Map<Address, i128> to serializable format
+    console.log('Raw contract result for balances:', safeStringify(result.result));
+
+    // ✅ Handle the Map<Address, i128> properly, converting BigInt to string
     const balancesWithStrings: { [key: string]: string } = {};
     
-    // The result.result is a Map, we need to iterate through it
+    console.log('Processing result.result:', safeStringify(result.result));
+    console.log('Type of result.result:', typeof result.result);
+    
     if (result.result && typeof result.result === 'object') {
-      for (const [tokenAddress, balance] of Object.entries(result.result)) {
-        balancesWithStrings[tokenAddress] = balance.toString();
+      console.log('Object.entries(result.result):', Object.entries(result.result));
+      
+      // Handle different formats that the Stellar SDK might return
+      for (const [key, value] of Object.entries(result.result)) {
+        console.log(`Processing entry: key="${key}", value="${value}", value type=${typeof value}`);
+        
+        if (Array.isArray(value) && value.length === 2) {
+          // Handle format: [[tokenAddress, balance]] where value is [tokenAddress, balance]
+          console.log('Detected array format with [tokenAddress, balance]');
+          const [tokenAddress, balance] = value;
+          console.log(`Extracted from array: tokenAddress="${tokenAddress}", balance="${balance}", balance type=${typeof balance}`);
+          
+          // Convert balance to string (handle BigInt)
+          let balanceStr = '';
+          if (typeof balance === 'bigint') {
+            balanceStr = balance.toString();
+          } else if (typeof balance === 'number') {
+            balanceStr = balance.toString();
+          } else {
+            balanceStr = String(balance);
+          }
+          
+          console.log(`Setting balance from array: ${tokenAddress} = ${balanceStr}`);
+          balancesWithStrings[tokenAddress] = balanceStr;
+          
+        } else if (typeof value === 'string' && value.includes(',')) {
+          // Handle format: {0: 'CDLZ...,1070000000'}
+          console.log('Detected comma-separated string format');
+          const [tokenAddress, balance] = value.split(',');
+          if (tokenAddress && balance) {
+            console.log(`Extracted from string: tokenAddress="${tokenAddress}", balance="${balance}"`);
+            balancesWithStrings[tokenAddress] = balance;
+          }
+        } else {
+          // Handle normal Map format where key is token address and value is BigInt/number
+          console.log('Detected normal Map format');
+          let balanceStr = '';
+          if (typeof value === 'bigint') {
+            balanceStr = value.toString();
+          } else if (typeof value === 'number') {
+            balanceStr = value.toString();
+          } else if (typeof value === 'string') {
+            balanceStr = value;
+          } else {
+            // Try to convert whatever it is to string
+            balanceStr = String(value);
+          }
+          
+          console.log(`Setting balance from normal format: ${key} = ${balanceStr}`);
+          balancesWithStrings[key] = balanceStr;
+        }
       }
     }
 
-    // Calculate total portfolio value (simplified - you might want to use real token prices)
+    console.log('Processed balances:', balancesWithStrings);
+
+    // Calculate total portfolio value (simplified - using 1:1 ratio for demo)
     let totalValue = 0;
-    for (const balance of Object.values(balancesWithStrings)) {
-      // Simple conversion assuming 1:1 ratio for demonstration
-      // In real implementation, you'd multiply by token prices
-      totalValue += parseFloat(balance) / 10000000; // Convert from stroops
+    console.log('Starting portfolio calculation with balances:', balancesWithStrings);
+    
+    for (const [tokenAddress, balance] of Object.entries(balancesWithStrings)) {
+      try {
+        console.log(`Processing token ${tokenAddress} with balance string: "${balance}"`);
+        
+        // Convert from stroops (7 decimal places for XLM/tokens)
+        const balanceValue = parseFloat(balance) / 10000000;
+        console.log(`Token ${tokenAddress}: balance=${balance}, converted=${balanceValue}`);
+        
+        if (!isNaN(balanceValue) && balanceValue > 0) {
+          totalValue += balanceValue;
+          console.log(`Added ${balanceValue} to total. New total: ${totalValue}`);
+        } else {
+          console.log(`Skipping token ${tokenAddress} - invalid balance: ${balanceValue}`);
+        }
+      } catch (e) {
+        console.warn(`Failed to parse balance for ${tokenAddress}: ${balance}`, e);
+      }
     }
+
+    console.log('Final calculated portfolio value:', totalValue);
 
     return NextResponse.json({
       success: true,
       data: {
         message: 'User balances fetched successfully!',
         balances: balancesWithStrings,
-        portfolioValue: totalValue.toFixed(2)
+        portfolioValue: isNaN(totalValue) ? '0.00' : totalValue.toFixed(2)
       }
     });
 
@@ -365,14 +446,16 @@ async function depositUserFunds(
   userAddress: string,
   tokenAddress: string,
   amount: string,
-  isNative: boolean = true
+  isNative: boolean = true,
+  assetCode?: string
 ): Promise<NextResponse> {
   try {
     console.log('Starting deposit preparation:', {
       userAddress,
       amount,
       isNative,
-      tokenAddress
+      tokenAddress,
+      assetCode
     });
 
     // Create RPC server for transaction preparation
@@ -385,15 +468,41 @@ async function depositUserFunds(
       publicKey: userAddress,
     });
 
-    // Use proper native XLM SAC address for testnet
-    // Get the correct contract address using Asset.native().contractId()
+    // Use proper token contract address
     let finalTokenAddress: string;
     if (isNative) {
       const nativeAsset = Asset.native();
       finalTokenAddress = nativeAsset.contractId(Networks.TESTNET);
       console.log('Using native XLM contract address:', finalTokenAddress);
     } else {
-      finalTokenAddress = tokenAddress;
+      // For non-native assets like USDC, we need to convert to Stellar Asset Contract (SAC) address
+      try {
+        // Use the provided asset code or infer from common tokens
+        let code = assetCode || 'USDC'; // Default to USDC if not specified
+        
+        // Map known issuer addresses to asset codes
+        const knownAssets: { [key: string]: string } = {
+          'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',
+          'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU': 'USDC', // Old address
+          'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC', // New EURC address
+          'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGX47OAFQNI3OOQKAIJE22LZRY': 'EUROC' // Old EUROC address
+        };
+        
+        if (knownAssets[tokenAddress]) {
+          code = knownAssets[tokenAddress];
+        }
+        
+        console.log(`Creating asset with code: ${code}, issuer: ${tokenAddress}`);
+        const asset = new Asset(code, tokenAddress);
+        finalTokenAddress = asset.contractId(Networks.TESTNET);
+        console.log('Using asset contract address for', code + ':', finalTokenAddress);
+        console.log('Original issuer address:', tokenAddress);
+      } catch (assetError) {
+        console.error('Error creating asset contract:', assetError);
+        // Fallback - use the address as-is (might be a direct contract address)
+        finalTokenAddress = tokenAddress;
+        console.log('Using direct contract address as fallback:', finalTokenAddress);
+      }
     }
 
     console.log('Calling client.deposit_user_funds with:', {
@@ -495,7 +604,8 @@ async function withdrawUserFunds(
   userAddress: string,
   tokenAddress: string,
   amount: string,
-  isNative: boolean = true
+  isNative: boolean = true,
+  assetCode?: string
 ): Promise<NextResponse> {
   try {
     console.log('Starting withdraw preparation:', {
@@ -515,15 +625,41 @@ async function withdrawUserFunds(
       publicKey: userAddress,
     });
 
-    // Use proper native XLM SAC address for testnet
-    // Get the correct contract address using Asset.native().contractId()
+    // Use proper token contract address
     let finalTokenAddress: string;
     if (isNative) {
       const nativeAsset = Asset.native();
       finalTokenAddress = nativeAsset.contractId(Networks.TESTNET);
       console.log('Using native XLM contract address for withdrawal:', finalTokenAddress);
     } else {
-      finalTokenAddress = tokenAddress;
+      // For non-native assets like USDC, we need to convert to Stellar Asset Contract (SAC) address
+      try {
+        // Use the provided asset code or infer from common tokens
+        let code = assetCode || 'USDC'; // Default to USDC if not specified
+        
+        // Map known issuer addresses to asset codes
+        const knownAssets: { [key: string]: string } = {
+          'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',
+          'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU': 'USDC', // Old address
+          'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC', // New EURC address
+          'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGX47OAFQNI3OOQKAIJE22LZRY': 'EUROC' // Old EUROC address
+        };
+        
+        if (knownAssets[tokenAddress]) {
+          code = knownAssets[tokenAddress];
+        }
+        
+        console.log(`Creating asset for withdrawal with code: ${code}, issuer: ${tokenAddress}`);
+        const asset = new Asset(code, tokenAddress);
+        finalTokenAddress = asset.contractId(Networks.TESTNET);
+        console.log('Using asset contract address for', code, 'withdrawal:', finalTokenAddress);
+        console.log('Original issuer address:', tokenAddress);
+      } catch (assetError) {
+        console.error('Error creating asset contract for withdrawal:', assetError);
+        // Fallback - use the address as-is (might be a direct contract address)
+        finalTokenAddress = tokenAddress;
+        console.log('Using direct contract address as fallback for withdrawal:', finalTokenAddress);
+      }
     }
 
     console.log('Calling client.withdraw_user_funds with:', {

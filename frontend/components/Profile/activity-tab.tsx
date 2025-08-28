@@ -22,13 +22,13 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
     { 
       symbol: 'USDC', 
       name: 'USD Coin', 
-      address: 'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU', // Stellar testnet USDC
+      address: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // Stellar testnet USDC
       isNative: false
     },
     { 
-      symbol: 'EUROC', 
+      symbol: 'EURC', 
       name: 'Euro Coin', 
-      address: 'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGX47OAFQNI3OOQKAIJE22LZRY', // Example testnet EUROC
+      address: 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO', // Stellar testnet EURC
       isNative: false
     }
   ]
@@ -55,6 +55,12 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
 
   const handleDepositAssetChange = (asset: string) => {
     const selectedToken = tokenOptions.find(token => token.symbol === asset)
+    console.log('Selected asset for deposit:', { 
+      asset, 
+      selectedToken,
+      tokenAddress: selectedToken?.address,
+      isNative: selectedToken?.isNative 
+    })
     setDepositForm(prev => ({
       ...prev,
       asset,
@@ -120,11 +126,14 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
       action: 'deposit_user_funds',
       userAddress: address,
       amount: amountInStroops,
+      assetCode: depositForm.asset, // Include the asset symbol (XLM, USDC, etc.)
       ...(depositForm.isNative 
         ? { isNative: true }
         : { tokenAddress: depositForm.tokenAddress, isNative: false }
       )
     }
+
+    console.log('Sending deposit request:', requestBody)
 
     const response = await fetch('/api/contract', {
       method: 'POST',
@@ -219,6 +228,8 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
       
       // Handle SAC deployment requirement
       if (result.error && result.error.includes('Stellar Asset Contract needs to be deployed')) {
+        showMessage('⚠️ Native XLM Stellar Asset Contract needs to be deployed first. This is a one-time setup required for XLM transactions.');
+        
         const shouldDeploy = confirm(
           `The native XLM Stellar Asset Contract (SAC) needs to be deployed first. This is a one-time setup.\n\n` +
           `Would you like to deploy it now? This will require a small transaction fee.`
@@ -239,9 +250,10 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
 
             if (deployResult.success) {
               if (deployResult.data.alreadyExists) {
-                alert('SAC is already deployed! Please try your deposit again.')
+                showMessage('✅ Native XLM SAC is already deployed! Please try your deposit again.')
               } else {
                 console.log('Signing SAC deployment transaction...')
+                showMessage('🚀 Preparing SAC deployment transaction for signing...')
                 
                 const deployedSigned = await walletKit.signTransaction(deployResult.data.transactionXdr, {
                   address,
@@ -260,17 +272,17 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
                 const deploySubmitResult = await deploySubmitResponse.json()
 
                 if (deploySubmitResult.success) {
-                  alert('Native XLM SAC deployed successfully! Please try your deposit again.')
+                  showMessage('🎉 Native XLM SAC deployed successfully! Please try your deposit again.')
                 } else {
-                  alert(`SAC deployment failed: ${deploySubmitResult.error}`)
+                  showMessage(`❌ SAC deployment failed: ${deploySubmitResult.error}`)
                 }
               }
             } else {
-              alert(`SAC deployment preparation failed: ${deployResult.error}`)
+              showMessage(`❌ SAC deployment preparation failed: ${deployResult.error}`)
             }
           } catch (deployError) {
             console.error('Error during SAC deployment:', deployError)
-            alert('SAC deployment failed. Please try again.')
+            showMessage(`❌ SAC deployment failed: ${deployError instanceof Error ? deployError.message : 'Please try again.'}`)
           }
         }
       } else {
@@ -280,7 +292,7 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
           errorMessage = 'Your account needs to be initialized first. Please initialize your account before depositing funds.'
         }
         
-        alert(`Deposit failed: ${errorMessage}`)
+        showMessage(`❌ Deposit failed: ${errorMessage}`)
       }
     }
   } catch (error) {
@@ -326,8 +338,9 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
         userAddress: address,
         amount: amountInStroops,
         destinationAddress: withdrawForm.destinationAddress,
+        assetCode: withdrawForm.asset, // Include the asset symbol
         ...(withdrawForm.isNative 
-          ? { isNative: true, assetCode: 'XLM' }
+          ? { isNative: true }
           : { tokenAddress: withdrawForm.tokenAddress, isNative: false }
         )
       }
