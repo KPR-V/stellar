@@ -2,12 +2,15 @@
 import React, { useState } from 'react'
 import { Clock, ArrowUpRight, ArrowDownRight, Plus, Minus, ChevronDown, ChevronRight } from 'lucide-react'
 import { useWallet } from '../../hooks/useWallet'
-import { SorobanRpc ,Transaction ,Networks } from '@stellar/stellar-sdk'
-const ActivityTab = () => {
+
+interface ActivityTabProps {
+  showMessage: (message: string) => void
+}
+
+const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
   const [activeForm, setActiveForm] = useState<'deposit' | 'withdraw' | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const { address, walletKit } = useWallet()
-const RPC_URL = 'https://soroban-testnet.stellar.org'
   // Updated token options with correct Stellar testnet addresses
   const tokenOptions = [
     { 
@@ -84,7 +87,34 @@ const RPC_URL = 'https://soroban-testnet.stellar.org'
   setIsLoading(true)
   
   try {
+    // First, check if user is initialized
+    console.log('Checking user initialization status...')
+    const initCheckResponse = await fetch('/api/contract', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'check_user_initialized',
+        userAddress: address
+      }),
+    })
+
+    const initCheckResult = await initCheckResponse.json()
+    
+    if (initCheckResult.success && !initCheckResult.data.isInitialized) {
+      alert('Your account needs to be initialized first. Please initialize your account before depositing funds.')
+      setIsLoading(false)
+      return
+    }
+
     const amountInStroops = Math.floor(parseFloat(depositForm.amount) * 10000000).toString()
+
+    console.log('Preparing deposit transaction...', {
+      amount: amountInStroops,
+      asset: depositForm.asset,
+      isNative: depositForm.isNative
+    })
 
     const requestBody = {
       action: 'deposit_user_funds',
@@ -107,60 +137,151 @@ const RPC_URL = 'https://soroban-testnet.stellar.org'
     const result = await response.json()
 
     if (result.success && result.data.transactionXdr) {
-    try {
-      // Sign the transaction
-      const signed = await walletKit.signTransaction(result.data.transactionXdr, {
-        address,
-        networkPassphrase: 'Test SDF Network ; September 2015'
-      })
+      try {
+        console.log('Signing transaction...')
+        
+        // Sign the transaction
+        const signed = await walletKit.signTransaction(result.data.transactionXdr, {
+          address,
+          networkPassphrase: 'Test SDF Network ; September 2015'
+        })
 
-      // Parse the signed XDR into a Transaction object
-      const signedTransaction = new Transaction(signed.signedTxXdr, Networks.TESTNET)
+        console.log('Transaction signed, submitting to network...', {
+          signedXdrLength: signed.signedTxXdr.length
+        })
 
-      // Submit the signed transaction
-      const rpcServer = new SorobanRpc.Server(RPC_URL)
-      const submitResponse = await rpcServer.sendTransaction(signedTransaction)
+        // Validate signed XDR before submission
+        try {
+          console.log('Validating signed XDR before submission...');
+          // Import TransactionBuilder for validation
+          const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+          const validatedTx = TransactionBuilder.fromXDR(signed.signedTxXdr, Networks.TESTNET);
+          console.log('Signed XDR validation successful');
+          console.log('Signed XDR first 200 chars:', signed.signedTxXdr.substring(0, 200));
+        } catch (validationError) {
+          console.error('CRITICAL: Signed XDR is corrupted!', validationError);
+          throw new Error(`Wallet returned corrupted XDR: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
+        }
 
-      console.log('Submit response:', submitResponse) // Add this for debugging
+        // Submit the signed transaction using our enhanced submit endpoint
+        const submitResponse = await fetch('/api/contract/submit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ signedXdr: signed.signedTxXdr }),
+        })
 
-      // Handle different response statuses
-      if (submitResponse.status === 'ERROR') {
-        console.error('Transaction submission error:', submitResponse)
-        throw new Error(`Transaction failed: ${submitResponse.errorResult?.result?.name || 'Unknown error'}`)
+        const submitResult = await submitResponse.json()
+
+        if (submitResult.success) {
+          console.log('Transaction confirmed:', submitResult.data)
+          
+          // Handle different success statuses
+          if (submitResult.data.status === 'SUCCESS_BUT_RESULT_UNPARSEABLE') {
+            showMessage(`Your Deposit was successfully executed! 
+            
+Hash: ${submitResult.data.hash}
+
+Note: Due to a Horizon server issue, we couldn't retrieve the full transaction details, but the transaction likely succeeded. You can check the status on Stellar Expert: https://stellar.expert/explorer/testnet/tx/${submitResult.data.hash}`)
+          } else {
+            showMessage(`Your Deposit was successfully executed! ${depositForm.amount} ${depositForm.asset} deposited successfully.`)
+          }
+          
+          setDepositForm({ ...depositForm, amount: '' })
+        } else {
+          console.error('Transaction failed:', submitResult)
+          
+          // Provide more user-friendly error messages
+          let errorMessage = submitResult.error || 'Transaction failed'
+          if (errorMessage.includes('not initialized')) {
+            errorMessage = 'Account not initialized. Please initialize your account first.'
+          } else if (errorMessage.includes('insufficient')) {
+            errorMessage = 'Insufficient balance or allowance for this transaction.'
+          } else if (errorMessage.includes('auth')) {
+            errorMessage = 'Authentication failed. Please check your wallet connection.'
+          }
+          
+          alert(`Transaction failed: ${errorMessage}`)
+          
+          // Log detailed error information for debugging
+          if (submitResult.details) {
+            console.error('Detailed error information:', submitResult.details)
+          }
+        }
+        
+      } catch (signError) {
+        console.error('Error during signing/submission:', signError)
+        alert(`Transaction failed: ${signError instanceof Error ? signError.message : 'Please try again.'}`)
       }
-
-      if (submitResponse.status !== 'PENDING') {
-        throw new Error(`Unexpected status: ${submitResponse.status}`)
-      }
-
-      // Rest of your polling logic...
-      let status
-      for (let i = 0; i < 10; i++) {
-        await new Promise(resolve => setTimeout(resolve, 5000))
-        status = await rpcServer.getTransaction(submitResponse.hash)
-        if (status.status !== 'NOT_FOUND') break
-      }
-
-
-
-      if (!status || status.status === 'NOT_FOUND') {
-        throw new Error('Transaction timed out')
-      } else if (status.status === 'FAILED') {
-        throw new Error('Transaction failed')
-      }
-
-      console.log('Transaction confirmed:', status)
-      alert(`Deposit of ${depositForm.amount} ${depositForm.asset} successful! Hash: ${submitResponse.hash}`)
-      
-      setDepositForm({ ...depositForm, amount: '' })
-      
-    } catch (signError) {
-      console.error('Error during signing/submission:', signError)
-      alert(`Transaction failed: ${signError instanceof Error ? signError.message : 'Please try again.'}`)
-    }
     } else {
-      console.error('Deposit failed:', result.error)
-      alert(`Deposit failed: ${result.error}`)
+      console.error('Deposit preparation failed:', result.error)
+      
+      // Handle SAC deployment requirement
+      if (result.error && result.error.includes('Stellar Asset Contract needs to be deployed')) {
+        const shouldDeploy = confirm(
+          `The native XLM Stellar Asset Contract (SAC) needs to be deployed first. This is a one-time setup.\n\n` +
+          `Would you like to deploy it now? This will require a small transaction fee.`
+        )
+        
+        if (shouldDeploy) {
+          try {
+            console.log('Preparing SAC deployment...')
+            const deployResponse = await fetch('/api/deploy-sac', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ userAddress: address }),
+            })
+
+            const deployResult = await deployResponse.json()
+
+            if (deployResult.success) {
+              if (deployResult.data.alreadyExists) {
+                alert('SAC is already deployed! Please try your deposit again.')
+              } else {
+                console.log('Signing SAC deployment transaction...')
+                
+                const deployedSigned = await walletKit.signTransaction(deployResult.data.transactionXdr, {
+                  address,
+                  networkPassphrase: 'Test SDF Network ; September 2015'
+                })
+
+                // Submit the SAC deployment
+                const deploySubmitResponse = await fetch('/api/contract/submit', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ signedXdr: deployedSigned.signedTxXdr }),
+                })
+
+                const deploySubmitResult = await deploySubmitResponse.json()
+
+                if (deploySubmitResult.success) {
+                  alert('Native XLM SAC deployed successfully! Please try your deposit again.')
+                } else {
+                  alert(`SAC deployment failed: ${deploySubmitResult.error}`)
+                }
+              }
+            } else {
+              alert(`SAC deployment preparation failed: ${deployResult.error}`)
+            }
+          } catch (deployError) {
+            console.error('Error during SAC deployment:', deployError)
+            alert('SAC deployment failed. Please try again.')
+          }
+        }
+      } else {
+        // Provide more user-friendly error messages
+        let errorMessage = result.error || 'Failed to prepare transaction'
+        if (errorMessage.includes('not initialized')) {
+          errorMessage = 'Your account needs to be initialized first. Please initialize your account before depositing funds.'
+        }
+        
+        alert(`Deposit failed: ${errorMessage}`)
+      }
     }
   } catch (error) {
     console.error('Error during deposit:', error)
@@ -193,6 +314,13 @@ const RPC_URL = 'https://soroban-testnet.stellar.org'
       // Convert amount to stroops (multiply by 10^7 for Stellar)
       const amountInStroops = Math.floor(parseFloat(withdrawForm.amount) * 10000000).toString()
 
+      console.log('Preparing withdrawal transaction...', {
+        amount: amountInStroops,
+        asset: withdrawForm.asset,
+        isNative: withdrawForm.isNative,
+        destination: withdrawForm.destinationAddress
+      })
+
       const requestBody = {
         action: 'withdraw_user_funds',
         userAddress: address,
@@ -215,19 +343,73 @@ const RPC_URL = 'https://soroban-testnet.stellar.org'
       const result = await response.json()
 
       if (result.success && result.data.transactionXdr) {
-        // Sign and submit transaction
-        const signedXdr = await walletKit.signTransaction(result.data.transactionXdr, {
-          address,
-          networkPassphrase: 'Test SDF Network ; September 2015'
-        })
+        try {
+          console.log('Signing withdrawal transaction...')
+          
+          // Sign the transaction
+          const signed = await walletKit.signTransaction(result.data.transactionXdr, {
+            address,
+            networkPassphrase: 'Test SDF Network ; September 2015'
+          })
 
-        console.log('Transaction signed successfully:', signedXdr)
-        alert(`Withdrawal of ${withdrawForm.amount} ${withdrawForm.asset} initiated successfully!`)
-        
-        // Reset form
-        setWithdrawForm({ ...withdrawForm, amount: '', destinationAddress: '' })
+          console.log('Transaction signed, submitting to network...', {
+            signedXdrLength: signed.signedTxXdr.length
+          })
+
+          // Validate signed XDR before submission
+          try {
+            console.log('Validating signed withdrawal XDR before submission...');
+            // Import TransactionBuilder for validation
+            const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+            const validatedTx = TransactionBuilder.fromXDR(signed.signedTxXdr, Networks.TESTNET);
+            console.log('Signed withdrawal XDR validation successful');
+            console.log('Signed withdrawal XDR first 200 chars:', signed.signedTxXdr.substring(0, 200));
+          } catch (validationError) {
+            console.error('CRITICAL: Signed withdrawal XDR is corrupted!', validationError);
+            throw new Error(`Wallet returned corrupted withdrawal XDR: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
+          }
+
+          // Submit the signed transaction using our enhanced submit endpoint
+          const submitResponse = await fetch('/api/contract/submit', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ signedXdr: signed.signedTxXdr }),
+          })
+
+          const submitResult = await submitResponse.json()
+
+          if (submitResult.success) {
+            console.log('Withdrawal confirmed:', submitResult.data)
+            
+            // Handle different success statuses
+            if (submitResult.data.status === 'SUCCESS_BUT_RESULT_UNPARSEABLE') {
+              showMessage(`Your Withdrawal was successfully executed! 
+              
+Hash: ${submitResult.data.hash}
+
+Note: Due to a Horizon server issue, we couldn't retrieve the full transaction details, but the transaction likely succeeded. You can check the status on Stellar Expert: https://stellar.expert/explorer/testnet/tx/${submitResult.data.hash}`)
+            } else {
+              showMessage(`Your Withdrawal was successfully executed! ${withdrawForm.amount} ${withdrawForm.asset} withdrawn successfully.`)
+            }
+            
+            setWithdrawForm({ ...withdrawForm, amount: '', destinationAddress: '' })
+          } else {
+            console.error('Withdrawal failed:', submitResult)
+            alert(`Withdrawal failed: ${submitResult.error}`)
+            
+            // Log detailed error information for debugging
+            if (submitResult.details) {
+              console.error('Detailed error information:', submitResult.details)
+            }
+          }
+        } catch (signError) {
+          console.error('Error during withdrawal signing/submission:', signError)
+          alert(`Withdrawal failed: ${signError instanceof Error ? signError.message : 'Please try again.'}`)
+        }
       } else {
-        console.error('Withdrawal failed:', result.error)
+        console.error('Withdrawal preparation failed:', result.error)
         alert(`Withdrawal failed: ${result.error}`)
       }
     } catch (error) {

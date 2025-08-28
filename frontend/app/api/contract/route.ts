@@ -1,7 +1,7 @@
 // api/contract/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../src/bindings/src'; 
-import { Networks } from '@stellar/stellar-sdk';
+import { Networks, TransactionBuilder, Asset } from '@stellar/stellar-sdk';
 import { SorobanRpc, Address as StellarAddress } from '@stellar/stellar-sdk';
 
 
@@ -33,6 +33,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return await getUserBalances(userAddress);
     }
 
+    if (action === 'check_user_initialized') {
+      return await checkUserInitialized(userAddress);
+    }
+
      if (action === 'deposit_user_funds') {
       return await depositUserFunds(userAddress, params.tokenAddress, params.amount);
     }
@@ -57,6 +61,9 @@ async function initializeUserAccountWithBindings(
   riskLimits: any
 ): Promise<NextResponse> {
   try {
+    // Create RPC server for transaction preparation
+    const server = new SorobanRpc.Server(RPC_URL);
+
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -64,7 +71,7 @@ async function initializeUserAccountWithBindings(
       publicKey: userAddress
     });
 
-    // ✅ Use simulate: true to auto-simulate and prepare XDR
+    // Build the transaction (simulate to get initial XDR)
     const result = await client.initialize_user_account({
       user: userAddress,
       initial_config: {
@@ -82,17 +89,21 @@ async function initializeUserAccountWithBindings(
         var_limit: BigInt(riskLimits.var_limit)
       }
     }, {
-      simulate: true // Auto-simulate and prepare for signing
+      simulate: true // Auto-simulate to get XDR
     });
 
-    // ✅ Now you can safely get the XDR
-    const transactionXdr = result.toXDR();
+    // Get the initial transaction XDR
+    const initialTx = result.toXDR();
+    
+    // Parse the transaction and prepare it with proper footprint and resources
+    const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
+    const preparedTransaction = await server.prepareTransaction(transaction);
 
     return NextResponse.json({
       success: true,
       data: { 
         message: 'Transaction prepared for signing',
-        transactionXdr: transactionXdr
+        transactionXdr: preparedTransaction.toXDR()
       }
     });
 
@@ -151,6 +162,9 @@ async function updateUserConfig(
   newConfig: any
 ): Promise<NextResponse> {
   try {
+    // Create RPC server for transaction preparation
+    const server = new SorobanRpc.Server(RPC_URL);
+
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -158,6 +172,7 @@ async function updateUserConfig(
       publicKey: userAddress, // Ensure correct source account
     });
 
+    // Build the transaction (simulate to get initial XDR)
     const result = await client.update_user_config({
       user: userAddress,
       new_config: {
@@ -169,16 +184,21 @@ async function updateUserConfig(
         slippage_tolerance_bps: newConfig.slippage_tolerance_bps
       }
     }, {
-      simulate: true // Auto-simulate and prepare for signing
+      simulate: true // Auto-simulate to get XDR
     });
 
-    const transactionXdr = result.toXDR();
+    // Get the initial transaction XDR
+    const initialTx = result.toXDR();
+    
+    // Parse the transaction and prepare it with proper footprint and resources
+    const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
+    const preparedTransaction = await server.prepareTransaction(transaction);
 
     return NextResponse.json({
       success: true,
       data: { 
         message: 'Update transaction prepared for signing',
-        transactionXdr: transactionXdr
+        transactionXdr: preparedTransaction.toXDR()
       }
     });
 
@@ -296,6 +316,51 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
   }
 }
 
+async function checkUserInitialized(userAddress: string): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    // Try to get user config - if it throws, user is not initialized
+    const result = await client.get_user_config({
+      user: userAddress
+    }, {
+      simulate: true
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        isInitialized: true,
+        message: 'User is initialized'
+      }
+    });
+
+  } catch (error) {
+    // If we get an error, the user is likely not initialized
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (errorMessage.includes('not initialized') || errorMessage.includes('not found')) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          isInitialized: false,
+          message: 'User not initialized'
+        }
+      });
+    }
+
+    // Other errors
+    return NextResponse.json({
+      success: false,
+      error: `Error checking user initialization: ${errorMessage}`
+    });
+  }
+}
+
 async function depositUserFunds(
   userAddress: string,
   tokenAddress: string,
@@ -303,6 +368,16 @@ async function depositUserFunds(
   isNative: boolean = true
 ): Promise<NextResponse> {
   try {
+    console.log('Starting deposit preparation:', {
+      userAddress,
+      amount,
+      isNative,
+      tokenAddress
+    });
+
+    // Create RPC server for transaction preparation
+    const server = new SorobanRpc.Server(RPC_URL);
+
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -310,9 +385,24 @@ async function depositUserFunds(
       publicKey: userAddress,
     });
 
-    // Handle native XLM with wrapped contract (replace with actual testnet wrapped XLM if different)
-    const finalTokenAddress = isNative ? 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT' : tokenAddress;
+    // Use proper native XLM SAC address for testnet
+    // Get the correct contract address using Asset.native().contractId()
+    let finalTokenAddress: string;
+    if (isNative) {
+      const nativeAsset = Asset.native();
+      finalTokenAddress = nativeAsset.contractId(Networks.TESTNET);
+      console.log('Using native XLM contract address:', finalTokenAddress);
+    } else {
+      finalTokenAddress = tokenAddress;
+    }
 
+    console.log('Calling client.deposit_user_funds with:', {
+      user: userAddress,
+      token_address: finalTokenAddress,
+      amount: amount
+    });
+
+    // Build the transaction (simulate to get initial XDR)
     const result = await client.deposit_user_funds({
       user: userAddress,
       token_address: finalTokenAddress,
@@ -321,22 +411,82 @@ async function depositUserFunds(
       simulate: true
     });
 
-    const transactionXdr = result.toXDR();
+    console.log('Client call successful, got result');
+
+    // Get the initial transaction XDR
+    const initialTx = result.toXDR();
+    console.log('Initial transaction XDR length:', initialTx.length);
+    
+    // Parse the transaction and prepare it with proper footprint and resources
+    let transaction, preparedTransaction;
+    
+    try {
+      transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
+      console.log('Successfully parsed initial transaction');
+    } catch (parseError) {
+      console.error('Error parsing initial transaction XDR:', parseError);
+      throw new Error(`Failed to parse initial transaction: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+    }
+
+    try {
+      preparedTransaction = await server.prepareTransaction(transaction);
+      console.log('Successfully prepared transaction');
+    } catch (prepareError) {
+      console.error('Error preparing transaction:', prepareError);
+      throw new Error(`Failed to prepare transaction: ${prepareError instanceof Error ? prepareError.message : 'Unknown error'}`);
+    }
+
+    const finalXdr = preparedTransaction.toXDR();
+    console.log('Final deposit transaction XDR length:', finalXdr.length);
+
+    // Validate the XDR we're about to send
+    try {
+      console.log('Validating prepared deposit XDR...');
+      const testParse = TransactionBuilder.fromXDR(finalXdr, Networks.TESTNET);
+      console.log('Deposit XDR validation successful - can be parsed correctly');
+      
+      // Log XDR structure for debugging
+      console.log('Prepared deposit XDR first 200 chars:', finalXdr.substring(0, 200));
+      console.log('Prepared deposit XDR details:', {
+        fee: testParse.fee,
+        operationsCount: testParse.operations.length,
+        networkPassphrase: testParse.networkPassphrase
+      });
+      
+    } catch (validateError) {
+      console.error('CRITICAL: Prepared deposit XDR is invalid!', validateError);
+      throw new Error(`Generated invalid deposit XDR: ${validateError instanceof Error ? validateError.message : 'Unknown validation error'}`);
+    }
 
     return NextResponse.json({
       success: true,
       data: { 
         message: 'Deposit transaction prepared for signing',
-        transactionXdr: transactionXdr
+        transactionXdr: finalXdr
       }
     });
 
   } catch (error) {
     console.error('Error preparing deposit transaction:', error);
+    
+    // Provide more specific error handling
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (errorMessage.includes('MissingValue') || errorMessage.includes('contract instance')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Native XLM Stellar Asset Contract needs to be deployed. Please deploy the SAC first or contact support.',
+        details: {
+          suggestion: 'The native XLM Stellar Asset Contract (SAC) has not been deployed on this network. This is required for token transfers.',
+          nativeContractAddress: Asset.native().contractId(Networks.TESTNET)
+        }
+      }, { status: 400 });
+    }
+    
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to prepare deposit transaction'
-    });
+      error: errorMessage
+    }, { status: 500 });
   }
 }
 
@@ -348,6 +498,16 @@ async function withdrawUserFunds(
   isNative: boolean = true
 ): Promise<NextResponse> {
   try {
+    console.log('Starting withdraw preparation:', {
+      userAddress,
+      amount,
+      isNative,
+      tokenAddress
+    });
+
+    // Create RPC server for transaction preparation
+    const server = new SorobanRpc.Server(RPC_URL);
+
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -355,8 +515,24 @@ async function withdrawUserFunds(
       publicKey: userAddress,
     });
 
-    const finalTokenAddress = isNative ? 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQAHHAGCN4CT' : tokenAddress;
+    // Use proper native XLM SAC address for testnet
+    // Get the correct contract address using Asset.native().contractId()
+    let finalTokenAddress: string;
+    if (isNative) {
+      const nativeAsset = Asset.native();
+      finalTokenAddress = nativeAsset.contractId(Networks.TESTNET);
+      console.log('Using native XLM contract address for withdrawal:', finalTokenAddress);
+    } else {
+      finalTokenAddress = tokenAddress;
+    }
 
+    console.log('Calling client.withdraw_user_funds with:', {
+      user: userAddress,
+      token_address: finalTokenAddress,
+      amount: amount
+    });
+
+    // Build the transaction (simulate to get initial XDR)
     const result = await client.withdraw_user_funds({
       user: userAddress,
       token_address: finalTokenAddress,
@@ -365,22 +541,82 @@ async function withdrawUserFunds(
       simulate: true
     });
 
-    const transactionXdr = result.toXDR();
+    console.log('Client call successful, got result');
+
+    // Get the initial transaction XDR
+    const initialTx = result.toXDR();
+    console.log('Initial transaction XDR length:', initialTx.length);
+    
+    // Parse the transaction and prepare it with proper footprint and resources
+    let transaction, preparedTransaction;
+    
+    try {
+      transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
+      console.log('Successfully parsed initial transaction');
+    } catch (parseError) {
+      console.error('Error parsing initial transaction XDR:', parseError);
+      throw new Error(`Failed to parse initial transaction: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+    }
+
+    try {
+      preparedTransaction = await server.prepareTransaction(transaction);
+      console.log('Successfully prepared transaction');
+    } catch (prepareError) {
+      console.error('Error preparing transaction:', prepareError);
+      throw new Error(`Failed to prepare transaction: ${prepareError instanceof Error ? prepareError.message : 'Unknown error'}`);
+    }
+
+    const finalXdr = preparedTransaction.toXDR();
+    console.log('Final withdraw transaction XDR length:', finalXdr.length);
+
+    // Validate the XDR we're about to send
+    try {
+      console.log('Validating prepared withdraw XDR...');
+      const testParse = TransactionBuilder.fromXDR(finalXdr, Networks.TESTNET);
+      console.log('Withdraw XDR validation successful - can be parsed correctly');
+      
+      // Log XDR structure for debugging
+      console.log('Prepared withdraw XDR first 200 chars:', finalXdr.substring(0, 200));
+      console.log('Prepared withdraw XDR details:', {
+        fee: testParse.fee,
+        operationsCount: testParse.operations.length,
+        networkPassphrase: testParse.networkPassphrase
+      });
+      
+    } catch (validateError) {
+      console.error('CRITICAL: Prepared withdraw XDR is invalid!', validateError);
+      throw new Error(`Generated invalid withdraw XDR: ${validateError instanceof Error ? validateError.message : 'Unknown validation error'}`);
+    }
 
     return NextResponse.json({
       success: true,
       data: { 
         message: 'Withdrawal transaction prepared for signing',
-        transactionXdr: transactionXdr
+        transactionXdr: finalXdr
       }
     });
 
   } catch (error) {
     console.error('Error preparing withdrawal transaction:', error);
+    
+    // Provide more specific error handling
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (errorMessage.includes('MissingValue') || errorMessage.includes('contract instance')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Native XLM Stellar Asset Contract needs to be deployed. Please deploy the SAC first or contact support.',
+        details: {
+          suggestion: 'The native XLM Stellar Asset Contract (SAC) has not been deployed on this network. This is required for token transfers.',
+          nativeContractAddress: Asset.native().contractId(Networks.TESTNET)
+        }
+      }, { status: 400 });
+    }
+    
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to prepare withdrawal transaction'
-    });
+      error: errorMessage
+    }, { status: 500 });
   }
 }
 

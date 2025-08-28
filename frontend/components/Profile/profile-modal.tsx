@@ -5,6 +5,8 @@ import ProfileStats from './profile-stats'
 import ActivityTab from './activity-tab'
 import TransactionTab from './transaction-tab'
 import SettingsTab from './settings-tab'
+import { useMessage } from '../../hooks/useMessage'
+import Message from '../message'
 
 interface ProfileModalProps {
   isOpen: boolean
@@ -13,6 +15,7 @@ interface ProfileModalProps {
 
 const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('Statistics')
+  const { messageState, showMessage, hideMessage } = useMessage()
 
   const tabs = ['Statistics', 'Activity', 'Transaction History', 'Settings']
 
@@ -21,7 +24,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
       case 'Statistics':
       return <ProfileStats isActive={activeTab === 'Statistics'} />
       case 'Activity':
-        return <ActivityTab />
+        return <ActivityTab showMessage={showMessage} />
       case 'Transaction History':
         // ✅ Pass isActive prop to trigger API call only when tab is active
         return <TransactionTab key={activeTab} isActive={activeTab === 'Transaction History'} />
@@ -79,6 +82,13 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
           {renderTabContent()}
         </div>
       </div>
+      
+      {/* Message Component - positioned relative to viewport */}
+      <Message 
+        message={messageState.message}
+        isVisible={messageState.isVisible}
+        onClose={hideMessage}
+      />
     </div>
   )
 }

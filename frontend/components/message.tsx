@@ -46,7 +46,7 @@ const Message: React.FC<MessageProps> = ({
 
   return (
     <div className={`
-      fixed bottom-6 right-6 z-[9999] font-raleway
+      fixed bottom-6 right-6 z-[99999] font-raleway
       transform transition-all duration-300 ease-out
       ${isVisible && !isAnimatingOut 
         ? 'translate-x-0 opacity-100' 
