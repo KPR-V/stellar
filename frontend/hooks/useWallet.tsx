@@ -1,6 +1,6 @@
 'use client'
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit"
+import { StellarWalletsKit, WalletNetwork, ISupportedWallet, xBullModule, FreighterModule, AlbedoModule } from "@creit.tech/stellar-wallets-kit"
 
 interface WalletContextType {
   address: string | null
@@ -42,9 +42,26 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   // Check stored wallet address on mount
   useEffect(() => {
     const storedAddress = localStorage.getItem('stellarWalletAddress')
+    const storedWalletId = localStorage.getItem('stellarSelectedWallet')
+    const initKit = async () => {
+      try {
+        const kit = new StellarWalletsKit({
+          network: WalletNetwork.TESTNET,
+          modules: [new xBullModule(), new FreighterModule(), new AlbedoModule()],
+        })
+        setWalletKit(kit)
+        if (storedWalletId) {
+          try {
+            await kit.setWallet(storedWalletId as unknown as ISupportedWallet['id'])
+          } catch {}
+        }
+      } catch {}
+    }
+
+    initKit()
+
     if (storedAddress) {
       setAddress(storedAddress)
-      // Set hardcoded values for stored wallet
       setPortfolioValue('0.00')
       setProfitLoss({
         value: '0.00',

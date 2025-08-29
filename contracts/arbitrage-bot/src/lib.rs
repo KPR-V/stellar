@@ -7,12 +7,15 @@ pub mod reflector;
 pub mod utils;
 pub use shared_types::*;
 pub use dex::{
-    StellarDEXClient, 
+    StellarDEXClient,          // ✅ Now properly available
     SwapResult, 
     simulate_trade,
     calculate_slippage_bps, 
-    estimate_gas_cost,  
+    estimate_gas_cost,
 };
+
+
+
 pub use reflector::*;
 pub use utils::*;
 
@@ -161,7 +164,6 @@ impl ArbitrageBot {
    
     pub fn deposit_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
         user.require_auth();
-
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
             .storage()
@@ -223,7 +225,7 @@ impl ArbitrageBot {
         user: Address,
         opportunity: EnhancedArbitrageOpportunity,
         trade_amount: i128,
-        venue_address: Address,
+        venue_address: Address,      
     ) -> TradeExecution {
         user.require_auth();
 
@@ -312,23 +314,31 @@ impl ArbitrageBot {
  
     pub fn get_user_balances(env: Env, user: Address) -> Map<Address, i128> {
         let profile_key = UserStorageKey::Profile(user);
-        let profile: UserProfile = env
-            .storage()
-            .persistent()
-            .get(&profile_key)
-            .expect("User not initialized");
+          // Safe handling - return empty map if user doesn't exist
+    if let Some(profile) = env.storage().persistent().get::<UserStorageKey, UserProfile>(&profile_key) {
         profile.balances
+    } else {
+        // Return empty balances map for uninitialized users
+        Map::new(&env)
+    }
     }
 
    
     pub fn get_user_config(env: Env, user: Address) -> ArbitrageConfig {
         let profile_key = UserStorageKey::Profile(user);
-        let profile: UserProfile = env
-            .storage()
-            .persistent()
-            .get(&profile_key)
-            .expect("User not initialized");
-        profile.trading_config
+        if let Some(profile) = env.storage().persistent().get::<UserStorageKey, UserProfile>(&profile_key) {
+            profile.trading_config
+        } else {
+            // Return default config for uninitialized users
+            ArbitrageConfig {
+                enabled: false,
+                min_profit_bps: 50,
+                max_trade_size: 0,
+                slippage_tolerance_bps: 100,
+                max_gas_price: 1000,
+                min_liquidity: 0,
+            }
+        }
     }
 
  
@@ -785,12 +795,13 @@ impl ArbitrageBot {
         let deadline = env.ledger().timestamp() + 300;
 
         let swap_result = dex_client.swap(
-            &env.current_contract_address(),
-            token_in,
-            token_out,
-            &trade_amount,
-            &0i128,
-            &deadline,
+            env.clone(),                        // Parameter 1: Env
+            &env.current_contract_address(),    // Parameter 2: caller
+            token_in,                           // Parameter 3: token_in
+            token_out,                          // Parameter 4: token_out
+            &trade_amount,                      // Parameter 5: amount_in
+            &0i128,                             // Parameter 6: min_amount_out
+            &deadline,                          // Parameter 7: deadline
         );
 
         let gas_cost = estimate_gas_cost(env, 3);
@@ -1062,67 +1073,79 @@ impl ArbitrageBot {
         recommendations
     }
 
-    fn simulate_arbitrage_trade(
-        env: &Env,
-        opportunity: &EnhancedArbitrageOpportunity,
-        trade_amount: i128,
-        venue_address: &Address,
-    ) -> Option<SwapResult> {
-        let dex_client = StellarDEXClient::new(env, venue_address);
-        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
-        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
-
-        simulate_trade(env, &dex_client, token_in, token_out, trade_amount)
-    }
-
     fn execute_real_trade(
         env: &Env,
         opportunity: &EnhancedArbitrageOpportunity,
         trade_amount: i128,
-        venue_address: &Address,
+        _venue_address: &Address, // ✅ Fixed unused variable warning
     ) -> TradeExecution {
-        let dex_client = StellarDEXClient::new(env, venue_address);
+        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
+        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+        
+        let deadline = env.ledger().timestamp() + 300;
+
+        let config: ArbitrageConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "config"))
+            .unwrap();
+
+        let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
+
+        // ✅ FIXED: Use corrected function
+        match crate::dex::execute_real_swap(
+            env,
+            token_in,
+            token_out,
+            trade_amount,
+            min_amount_out,
+            &env.current_contract_address(),
+            deadline,
+        ) {
+            Ok(swap_result) => {
+                let gas_cost = crate::dex::estimate_gas_cost(env, 5);
+                let net_profit = swap_result.amount_out - trade_amount - gas_cost;
+
+                TradeExecution {
+                    opportunity: opportunity.base_opportunity.clone(),
+                    executed_amount: trade_amount,
+                    actual_profit: net_profit,
+                    gas_cost,
+                    execution_timestamp: env.ledger().timestamp(),
+                    status: Symbol::new(env, "SUCCESS"),
+                }
+            }
+            Err(error) => {
+                let error_symbol = match error {
+                    crate::dex::DEXError::InsufficientLiquidity => Symbol::new(env, "INSUFFICIENT_LIQUIDITY"),
+                    crate::dex::DEXError::SlippageExceeded => Symbol::new(env, "SLIPPAGE_EXCEEDED"),
+                    crate::dex::DEXError::DeadlineExceeded => Symbol::new(env, "DEADLINE_EXCEEDED"),
+                    _ => Symbol::new(env, "SWAP_FAILED"),
+                };
+
+                TradeExecution {
+                    opportunity: opportunity.base_opportunity.clone(),
+                    executed_amount: 0,
+                    actual_profit: 0,
+                    gas_cost: 0,
+                    execution_timestamp: env.ledger().timestamp(),
+                    status: error_symbol,
+                }
+            }
+        }
+    }
+
+    fn simulate_arbitrage_trade(
+        env: &Env,
+        opportunity: &EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        _venue_address: &Address,
+    ) -> Option<SwapResult> {
         let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
         let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
 
-        let deadline = env.ledger().timestamp() + 300;
-
-        let swap_result = dex_client.swap(
-            &env.current_contract_address(),
-            token_in,
-            token_out,
-            &trade_amount,
-            &0i128,
-            &deadline,
-        );
-
-        let gas_cost = estimate_gas_cost(env, 3);
-        let net_profit = swap_result.amount_out - trade_amount - gas_cost;
-
-        let execution = TradeExecution {
-            opportunity: opportunity.base_opportunity.clone(),
-            executed_amount: trade_amount,
-            actual_profit: net_profit,
-            gas_cost,
-            execution_timestamp: env.ledger().timestamp(),
-            status: if swap_result.success {
-                Symbol::new(env, "SUCCESS")
-            } else {
-                Symbol::new(env, "FAILED")
-            },
-        };
-
-        env.events().publish(
-            (
-                Symbol::new(env, "trade_execution"),
-                Symbol::new(env, "completed"),
-            ),
-            (execution.clone(),),
-        );
-
-        execution
+        crate::dex::simulate_trade(env, token_in, token_out, trade_amount)
     }
-
     fn check_trade_risk(env: &Env, risk_manager: &Address, trade_size: i128) -> Symbol {
         let risk_client = RiskManagerClient::new(env, risk_manager);
         risk_client.check_trade_risk(&trade_size)

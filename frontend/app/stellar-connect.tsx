@@ -126,6 +126,7 @@ export default function StellarConnect() {
             if (walletAddress) {
               setAddress(walletAddress);
               localStorage.setItem("stellarWalletAddress", walletAddress);
+              localStorage.setItem("stellarSelectedWallet", option.id);
               showMessage("Wallet connected successfully!");
 
               setPortfolioValue('0.00');

@@ -1,7 +1,7 @@
 // api/contract/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { Client } from '../../../src/bindings/src'; 
-import { Networks, TransactionBuilder, Asset } from '@stellar/stellar-sdk';
+import { Client } from '../../../bindings/src'; 
+import { Networks } from '@stellar/stellar-sdk';
 import { SorobanRpc, Address as StellarAddress } from '@stellar/stellar-sdk';
 
 // ✅ Helper to safely stringify objects with BigInt values

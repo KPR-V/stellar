@@ -1,3 +1,4 @@
+"use client"
 // components/profile/profile-stats.tsx
 import React, { useState, useEffect } from 'react'
 import { useWallet } from '../../hooks/useWallet'

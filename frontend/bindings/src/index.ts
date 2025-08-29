@@ -912,7 +912,7 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy(null, options)
+    return ContractClient.arguments(null, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
