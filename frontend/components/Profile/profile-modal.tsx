@@ -17,7 +17,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('Statistics')
   const { messageState, showMessage, hideMessage } = useMessage()
 
-  const tabs = ['Statistics', 'Activity', 'Transaction History', 'Settings']
+  const tabs = ['Statistics', 'Activity', 'Trade History', 'Settings']
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -25,9 +25,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
       return <ProfileStats isActive={activeTab === 'Statistics'} />
       case 'Activity':
         return <ActivityTab showMessage={showMessage} />
-      case 'Transaction History':
+      case 'Trade History':
         // ✅ Pass isActive prop to trigger API call only when tab is active
-        return <TransactionTab key={activeTab} isActive={activeTab === 'Transaction History'} />
+        return <TransactionTab key={activeTab} isActive={activeTab === 'Trade History'} />
       case 'Settings':
         return <SettingsTab key={activeTab} /> // Add key to force re-render when tab changes
       default:

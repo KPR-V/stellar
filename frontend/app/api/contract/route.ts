@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../bindings/src'; 
 import { Networks } from '@stellar/stellar-sdk';
-import { SorobanRpc, Address as StellarAddress } from '@stellar/stellar-sdk';
+import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset } from '@stellar/stellar-sdk';
 
 // ✅ Helper to safely stringify objects with BigInt values
 const safeStringify = (obj: any) => {
@@ -14,7 +14,7 @@ const safeStringify = (obj: any) => {
   });
 };
 
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE';
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CCKGFSM4JTAD2DULINQVO4YVUJVO6OJS7AMRS56DZMERF5W2LCD5GVYD';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -53,12 +53,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return await getUserPerformanceMetrics(userAddress, days);
     }
 
-    if (action === 'scan_advanced_opportunities') {
-      return await scanAdvancedOpportunities();
-    }
-
     if (action === 'get_pairs') {
       return await getPairs()
+    }
+
+    if (action === 'get_performance_metrics') {
+      const { days = 30 } = params; // Default to 30 days if not specified
+      return await getBotPerformanceMetrics(days);
     }
 
     if (action === 'check_user_initialized') {
@@ -257,19 +258,19 @@ async function getUserTradeHistory(
       simulate: true
     });
 
-    // ✅ Format the trade history data and handle BigInt serialization
+    // ✅ Format the trade history data with proper price normalization
     const formattedTrades = result.result.map((trade: any) => ({
-      executed_amount: trade.executed_amount?.toString(),
-      actual_profit: trade.actual_profit?.toString(),
-      gas_cost: trade.gas_cost?.toString(),
+      executed_amount: normalizeOraclePrice(trade.executed_amount?.toString() || '0', 7),
+      actual_profit: normalizeOraclePrice(trade.actual_profit?.toString() || '0', 7),
+      gas_cost: normalizeOraclePrice(trade.gas_cost?.toString() || '0', 7),
       execution_timestamp: trade.execution_timestamp?.toString(),
       status: trade.status,
       opportunity: {
         pair: trade.opportunity.pair,
-        stablecoin_price: trade.opportunity.stablecoin_price?.toString(),
-        fiat_rate: trade.opportunity.fiat_rate?.toString(),
+        stablecoin_price: normalizeOraclePrice(trade.opportunity.stablecoin_price?.toString() || '0', 7),
+        fiat_rate: normalizeOraclePrice(trade.opportunity.fiat_rate?.toString() || '0', 7),
         deviation_bps: trade.opportunity.deviation_bps,
-        estimated_profit: trade.opportunity.estimated_profit?.toString(),
+        estimated_profit: normalizeOraclePrice(trade.opportunity.estimated_profit?.toString() || '0', 7),
         trade_direction: trade.opportunity.trade_direction,
         timestamp: trade.opportunity.timestamp?.toString()
       }
@@ -382,7 +383,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
     for (const [tokenAddress, balance] of Object.entries(balancesWithStrings)) {
       try {
         let usdPrice = 0;
-        const balanceValue = parseFloat(balance) / 10000000; // Convert from stroops
+        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7)); // Use proper normalization
         
         // Get token symbol for oracle lookup
         const tokenInfo = getTokenSymbolForOracle(tokenAddress);
@@ -396,7 +397,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         
         tokenPrices[tokenAddress] = usdPrice;
         balancesWithUsdValues[tokenAddress] = {
-          balance: balance,
+          balance: normalizeOraclePrice(balance, 7), // Store normalized balance for display
           usdValue: usdValue,
           price: usdPrice
         };
@@ -405,7 +406,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         
       } catch (priceError) {
         console.warn(`Failed to fetch price for ${tokenAddress}:`, priceError);
-        const balanceValue = parseFloat(balance) / 10000000;
+        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7)); // Use proper normalization
         
         // Fallback: assume $1 for stablecoins, dynamic for others
         let fallbackPrice = 1; // Default for USDC/EURC
@@ -413,7 +414,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         
         tokenPrices[tokenAddress] = fallbackPrice;
         balancesWithUsdValues[tokenAddress] = {
-          balance: balance,
+          balance: normalizeOraclePrice(balance, 7), // Store normalized balance for display
           usdValue: balanceValue * fallbackPrice,
           price: fallbackPrice
         };
@@ -516,14 +517,14 @@ async function getUserPerformanceMetrics(userAddress: string, days: number = 30)
 
     console.log('Raw performance metrics result:', safeStringify(result.result));
 
-    // Format the performance metrics data and handle BigInt serialization
+    // Format the performance metrics data with proper price normalization
     const metrics = {
       total_trades: result.result.total_trades || 0,
       successful_trades: result.result.successful_trades || 0,
-      total_profit: result.result.total_profit?.toString() || '0',
-      total_volume: result.result.total_volume?.toString() || '0',
+      total_profit: normalizeOraclePrice(result.result.total_profit?.toString() || '0', 7),
+      total_volume: normalizeOraclePrice(result.result.total_volume?.toString() || '0', 7),
       success_rate_bps: result.result.success_rate_bps || 0,
-      avg_profit_per_trade: result.result.avg_profit_per_trade?.toString() || '0',
+      avg_profit_per_trade: normalizeOraclePrice(result.result.avg_profit_per_trade?.toString() || '0', 7),
       period_days: result.result.period_days || days,
       // Calculate additional derived metrics
       success_rate: result.result.success_rate_bps ? (result.result.success_rate_bps / 100).toFixed(2) : '0.00',
@@ -946,7 +947,7 @@ async function getPairs(): Promise<NextResponse> {
 }
 
 
-async function scanAdvancedOpportunities(): Promise<NextResponse> {
+async function getBotPerformanceMetrics(days: number = 30): Promise<NextResponse> {
   try {
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
@@ -954,51 +955,113 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     });
 
-    const result = await client.scan_advanced_opportunities({
+    const result = await client.get_performance_metrics({
+      days: days
+    }, {
       simulate: true
     });
 
-    console.log('=== RAW SMART CONTRACT OUTPUT ===')
+    console.log('Raw bot performance metrics result:', safeStringify(result.result));
+
+    // Format the bot performance metrics data and handle BigInt serialization
+    const metrics = {
+      total_trades: result.result.total_trades || 0,
+      successful_trades: result.result.successful_trades || 0,
+      total_profit: result.result.total_profit?.toString() || '0',
+      total_volume: result.result.total_volume?.toString() || '0',
+      success_rate_bps: result.result.success_rate_bps || 0,
+      avg_profit_per_trade: result.result.avg_profit_per_trade?.toString() || '0',
+      period_days: result.result.period_days || days,
+      success_rate: result.result.success_rate_bps ? (result.result.success_rate_bps / 100).toFixed(2) : '0.00',
+      win_rate: result.result.total_trades > 0 ? ((result.result.successful_trades / result.result.total_trades) * 100).toFixed(2) : '0.00'
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Bot performance metrics fetched successfully!',
+        metrics: metrics
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching bot performance metrics:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch bot performance metrics'
+    });
+  }
+}
+
+// Helper function to normalize oracle prices
+function normalizeOraclePrice(rawPrice: string | bigint, decimals: number = 7): string {
+  const priceNum = typeof rawPrice === 'string' ? parseFloat(rawPrice) : Number(rawPrice);
+  if (priceNum === 0 || isNaN(priceNum)) return '0.000000';
+  
+  const normalizedPrice = priceNum / Math.pow(10, decimals);
+  return normalizedPrice.toFixed(6); // Show up to 6 decimal places for precision
+}
+
+// Helper function to estimate gas cost (mirrors dex.rs estimate_gas_cost)
+function estimateGasCostFromContract(complexityScore: number): bigint {
+  const baseCost = BigInt(100000);
+  const variableCost = BigInt(complexityScore) * BigInt(2500);
+  
+  // Simulate network multiplier (use a reasonable default)
+  const networkMultiplier = BigInt(120); // 1.2x multiplier
+  
+  return ((baseCost + variableCost) * networkMultiplier) / BigInt(100);
+}
+
+async function scanOpportunities(): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    console.log('=== CALLING SCAN_OPPORTUNITIES FUNCTION ===')
+    
+    const result = await client.scan_opportunities({
+      simulate: true
+    });
+
+    console.log('=== RAW SCAN_OPPORTUNITIES OUTPUT ===')
     console.log('Raw opportunities result:', safeStringify(result.result));
     console.log('Result type:', typeof result.result)
     console.log('Is array:', Array.isArray(result.result))
     console.log('Length:', result.result?.length || 'N/A')
 
-    // Format the opportunities data and handle BigInt serialization
-    const formattedOpportunities = result.result.map((opportunity: any) => ({
-      base_opportunity: {
+    // Check if result is an array of opportunities
+    const opportunities = Array.isArray(result.result) ? result.result : [];
+
+    // Format the opportunities data with proper price normalization
+    const formattedOpportunities = opportunities.map((opportunity: any) => {
+      const rawStablecoinPrice = opportunity.stablecoin_price?.toString() || '0';
+      const rawFiatRate = opportunity.fiat_rate?.toString() || '0';
+      const rawEstimatedProfit = opportunity.estimated_profit?.toString() || '0';
+
+      console.log(`Raw prices for ${opportunity.pair?.stablecoin_symbol}:`, {
+        stablecoin_price: rawStablecoinPrice,
+        fiat_rate: rawFiatRate,
+        estimated_profit: rawEstimatedProfit
+      });
+
+      return {
         pair: {
-          stablecoin_symbol: opportunity.base_opportunity.pair.stablecoin_symbol,
-          stablecoin_address: opportunity.base_opportunity.pair.stablecoin_address,
-          fiat_symbol: opportunity.base_opportunity.pair.fiat_symbol
+          stablecoin_symbol: opportunity.pair?.stablecoin_symbol || 'Unknown',
+          stablecoin_address: opportunity.pair?.stablecoin_address || '',
+          fiat_symbol: opportunity.pair?.fiat_symbol || 'Unknown'
         },
-        stablecoin_price: opportunity.base_opportunity.stablecoin_price?.toString(),
-        fiat_rate: opportunity.base_opportunity.fiat_rate?.toString(),
-        deviation_bps: opportunity.base_opportunity.deviation_bps,
-        estimated_profit: opportunity.base_opportunity.estimated_profit?.toString(),
-        trade_direction: opportunity.base_opportunity.trade_direction,
-        timestamp: opportunity.base_opportunity.timestamp?.toString()
-      },
-      cross_rate_data: {
-        primary_rate: opportunity.cross_rate_data.primary_rate?.toString(),
-        secondary_rate: opportunity.cross_rate_data.secondary_rate?.toString(),
-        deviation_bps: opportunity.cross_rate_data.deviation_bps,
-        confidence_score: opportunity.cross_rate_data.confidence_score
-      },
-      risk_assessment: {
-        liquidity_score: opportunity.risk_assessment.liquidity_score,
-        volatility_score: opportunity.risk_assessment.volatility_score,
-        market_impact_bps: opportunity.risk_assessment.market_impact_bps,
-        recommended_size: opportunity.risk_assessment.recommended_size?.toString()
-      },
-      venue_recommendations: opportunity.venue_recommendations.map((venue: any) => ({
-        venue_address: venue.venue_address,
-        venue_name: venue.venue_name,
-        expected_slippage_bps: venue.expected_slippage_bps,
-        gas_estimate: venue.gas_estimate?.toString(),
-        priority_score: venue.priority_score
-      }))
-    }));
+        stablecoin_price: normalizeOraclePrice(rawStablecoinPrice, 7),
+        fiat_rate: normalizeOraclePrice(rawFiatRate, 7),
+        deviation_bps: opportunity.deviation_bps || 0,
+        estimated_profit: normalizeOraclePrice(rawEstimatedProfit, 7),
+        trade_direction: opportunity.trade_direction || 'hold',
+        timestamp: opportunity.timestamp?.toString() || Date.now().toString()
+      };
+    });
 
     console.log('=== FORMATTED OPPORTUNITIES OUTPUT ===')
     console.log('Formatted opportunities count:', formattedOpportunities.length)
@@ -1007,7 +1070,7 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
     return NextResponse.json({
       success: true,
       data: {
-        message: 'Advanced opportunities scanned successfully!',
+        message: 'Basic opportunities scanned successfully!',
         opportunities: formattedOpportunities,
         count: formattedOpportunities.length,
         timestamp: new Date().toISOString()
@@ -1015,12 +1078,11 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
     });
 
   } catch (error) {
-    console.error('Error scanning advanced opportunities:', error);
+    console.error('Error scanning opportunities:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to scan opportunities'
     });
   }
 }
-
 

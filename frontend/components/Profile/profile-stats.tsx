@@ -255,7 +255,7 @@ const ProfileStats: React.FC<ProfileStatsProps> = ({ isActive }) => {
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300">
           <h4 className="text-white/80 text-sm font-medium mb-2">Total Balance</h4>
-          <p className="text-3xl font-light text-white/95 font-raleway">
+          <p className="text-3xl font-bold text-white/95 font-raleway">
             ${portfolioValue}
           </p>
           <p className={`text-xs mt-2 ${change24h.isPositive ? 'text-green-400' : 'text-red-400'}`}>

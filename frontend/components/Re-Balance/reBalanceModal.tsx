@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useRebalance } from '../../hooks/useRebalance'
-import ScanOpportunities from './scan-opportunties'
+import BotStatistics from './bot-statistics'
 
 interface ReBalanceModalProps {
   className?: string
@@ -26,8 +26,14 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
   const { isModalOpen, closeModal } = useRebalance()
   const modalRef = useRef<HTMLDivElement>(null)
   const [activeTab, setActiveTab] = useState('Arbitrage-Bot')
+  const [hasOpportunities, setHasOpportunities] = useState(false)
 
-  const tabs = ['Arbitrage-Bot', 'Arbitrage-Manual']
+  // Handle opportunities change callback
+  const handleOpportunitiesChange = (hasOpps: boolean) => {
+    setHasOpportunities(hasOpps)
+  }
+
+  const tabs = ['Arbitrage-Bot', 'Arbitrage-Manual', 'CalibreX Stats']
 
   // Render tab content based on active tab
   const renderTabContent = () => {
@@ -35,10 +41,6 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
       case 'Arbitrage-Bot':
         return (
           <div className="p-6">
-            <ScanOpportunities 
-              userAddress={userAddress}
-              className="w-full"
-            />
           </div>
         )
 
@@ -58,6 +60,13 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        )
+
+      case 'CalibreX Stats':
+        return (
+          <div className="p-6">
+            <BotStatistics className="w-full" />
           </div>
         )
 
@@ -148,7 +157,17 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
                 }
               `}
             >
-              {tab}
+              <div className="flex items-center gap-2">
+                {tab}
+                
+                {/* Blinking green dot for Arbitrage-Bot when opportunities exist */}
+                {tab === 'Arbitrage-Bot' && hasOpportunities && (
+                  <div className="relative">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <div className="absolute inset-0 w-2 h-2 bg-green-400 rounded-full animate-ping opacity-75"></div>
+                  </div>
+                )}
+              </div>
               
               {/* Active indicator */}
               {activeTab === tab && (
