@@ -1,8 +1,8 @@
 'use client'
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useRebalance } from '../../hooks/useRebalance'
-import PortfolioPieChart from '../piechart'
+import ScanOpportunities from './scan-opportunties'
 
 interface ReBalanceModalProps {
   className?: string
@@ -11,6 +11,7 @@ interface ReBalanceModalProps {
   tokenPrices?: {[key: string]: number}
   isLoading?: boolean
   lastUpdated?: Date | null
+  userAddress?: string
 }
 
 const ReBalanceModal: React.FC<ReBalanceModalProps> = ({ 
@@ -19,68 +20,57 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
   balancesWithPrices = {},
   tokenPrices = {},
   isLoading = false,
-  lastUpdated = null
+  lastUpdated = null,
+  userAddress = ''
 }) => {
   const { isModalOpen, closeModal } = useRebalance()
   const modalRef = useRef<HTMLDivElement>(null)
+  const [activeTab, setActiveTab] = useState('Arbitrage-Bot')
 
-  // Enhanced token mapping with comprehensive list
-  const getTokenInfo = (tokenAddress: string) => {
-    const tokenMap: { [key: string]: { symbol: string, name: string } } = {
-      // Native
-      'native': { symbol: 'XLM', name: 'Stellar Lumens' },
-      
-      // Current active SAC addresses
-      'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQAHHAGCN6FM': { symbol: 'XLM', name: 'Stellar Lumens' },
-      'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' },
-      'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ': { symbol: 'EURC', name: 'Euro Coin' },
-      
-      // Alternative SAC addresses
-      'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2DA2KTP5PS': { symbol: 'USDC', name: 'USD Coin' },
-      
-      // Known testnet issuer addresses
-      'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' },
-      'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' },
-      
-      // Mainnet common tokens
-      'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA': { symbol: 'USDC', name: 'USD Coin (Mainnet)' },
-      'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU': { symbol: 'USDC', name: 'USD Coin' }
-    }
-    
-    const cleanAddress = tokenAddress.trim();
-    
-    if (tokenMap[cleanAddress]) {
-      return tokenMap[cleanAddress];
-    }
-    
-    for (const [key, value] of Object.entries(tokenMap)) {
-      if (key.startsWith(cleanAddress.slice(0, 8)) || cleanAddress.startsWith(key.slice(0, 8))) {
-        return value;
-      }
-    }
-    
-    return { 
-      symbol: tokenAddress.slice(0, 8) + '...', 
-      name: 'Unknown Token' 
+  const tabs = ['Arbitrage-Bot', 'Arbitrage-Manual']
+
+  // Render tab content based on active tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'Arbitrage-Bot':
+        return (
+          <div className="p-6">
+            <ScanOpportunities 
+              userAddress={userAddress}
+              className="w-full"
+            />
+          </div>
+        )
+
+      case 'Arbitrage-Manual':
+        return (
+          <div className="p-6">
+            <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
+              <div className="text-center py-12">
+                <div className="text-white/40 mb-2">⚖️</div>
+                <div className="text-white/60 text-sm mb-1">Manual Arbitrage</div>
+                <div className="text-white/40 text-xs mb-4">Execute arbitrage trades manually with custom parameters</div>
+                <button 
+                  disabled
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-white/10 text-white/50 cursor-not-allowed"
+                >
+                  Coming Soon
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+
+      default:
+        return (
+          <div className="p-6">
+            <div className="text-center py-12 text-white/50">
+              Select a tab to view content
+            </div>
+          </div>
+        )
     }
   }
-
-  // Close modal when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
-        closeModal()
-      }
-    }
-
-    if (isModalOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isModalOpen, closeModal])
 
   // Prevent scrolling when modal is open
   useEffect(() => {
@@ -120,7 +110,7 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
         ref={modalRef}
         className={`
           bg-black/80 backdrop-blur-sm border border-white/10 rounded-2xl
-          p-6 w-[700px] max-w-[90vw] max-h-[90vh] overflow-auto faq-scrollbar
+          w-[900px] max-w-[95vw] h-[700px] max-h-[95vh] overflow-hidden
           transition-all ease-out
           animate-in fade-in-0 zoom-in-95 duration-300
           shadow-xl shadow-black/20
@@ -129,12 +119,11 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
         `}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/20">
           <div>
             <h2 className="text-white/90 text-xl font-medium">Re-Balance Portfolio</h2>
             <p className="text-white/50 text-sm mt-1">
-              {lastUpdated && !isLoading && `Last updated: ${lastUpdated.toLocaleTimeString()}`}
-              {isLoading && 'Updating...'}
+              Manage your portfolio allocation and trading strategies
             </p>
           </div>
           <button 
@@ -144,84 +133,72 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
             <X size={20} />
           </button>
         </div>
-        
-        {/* Portfolio Overview */}
-        <div className="mb-6">
-          <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left side - Portfolio Value */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-white/80 text-sm font-medium">Current Portfolio Value</h3>
-                  <div className="flex items-center gap-2">
-                    {isLoading && (
-                      <div className="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-                    )}
-                  </div>
-                </div>
-                <div className="text-3xl font-light text-white/95 mb-2">
-                  ${portfolioValue}
-                </div>
-                <div className="text-xs text-white/50 mb-6">
-                  {Object.keys(balancesWithPrices).length} assets
-                </div>
-              </div>
+
+        {/* Horizontal Tabs */}
+        <div className="flex border-b border-white/5 bg-black/10">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`
+                relative px-6 py-3 transition-all duration-300 ease-out font-raleway font-medium text-sm
+                ${activeTab === tab
+                  ? 'text-white/95 bg-white/5'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/3'
+                }
+              `}
+            >
+              {tab}
               
-              {/* Right side - Pie Chart */}
-              <div className="flex items-center justify-center">
-                <PortfolioPieChart
-                  balancesWithPrices={balancesWithPrices}
-                  portfolioValue={portfolioValue}
-                  className="w-full"
-                />
-              </div>
-            </div>
-          </div>
+              {/* Active indicator */}
+              {activeTab === tab && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Rebalance Strategy Section */}
-        <div className="mb-6">
-          <h3 className="text-white/80 text-sm font-medium mb-4">Rebalance Strategy</h3>
-          <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
-            <div className="text-white/60 text-sm text-center py-8">
-              <div className="mb-2">⚖️</div>
-              <div>Rebalance strategy controls will be implemented here</div>
-              <div className="text-xs text-white/40 mt-2">Set target allocations, risk parameters, and automated rebalancing rules</div>
-            </div>
-          </div>
+        {/* Tab Content - Scrollable */}
+        <div className="flex-1 bg-black/30 h-[580px] overflow-y-auto faq-scrollbar">
+          {renderTabContent()}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/5">
-          <button 
-            onClick={closeModal}
-            className="
-              px-4 py-2 text-sm font-medium rounded-lg
-              text-white/70 bg-white/5 border border-white/10
-              transition-all duration-200
-              hover:bg-white/10 hover:text-white/90 hover:border-white/20
-              active:scale-[0.98]
-              font-raleway
-            "
-          >
-            Cancel
-          </button>
-          <button 
-            disabled={Object.keys(balancesWithPrices).length === 0}
-            className="
-              bg-white text-black rounded-lg
-              px-4 py-2 text-sm font-medium
-              transition-all duration-300 ease-out
-              hover:bg-white/90 hover:shadow-md
-              focus:bg-white/90 focus:ring-2 focus:ring-white/20
-              active:scale-[0.98]
-              disabled:opacity-50 disabled:cursor-not-allowed
-              font-raleway
-            "
-          >
-            Re-Balance Now
-          </button>
-        </div>
+        {/* Action Buttons - Only show for certain tabs */}
+        {activeTab === 'Arbitrage-Manual' && (
+          <div className="flex items-center justify-end gap-3 p-6 pt-4 border-t border-white/5 bg-black/10">
+            <button 
+              onClick={closeModal}
+              className="
+                px-4 py-2 text-sm font-medium rounded-lg
+                text-white/70 bg-white/5 border border-white/10
+                transition-all duration-200
+                hover:bg-white/10 hover:text-white/90 hover:border-white/20
+                active:scale-[0.98]
+                font-raleway
+              "
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={() => {
+                // Add your re-balance/execute trade logic here
+              }}
+              disabled={Object.keys(balancesWithPrices).length === 0}
+              className="
+                bg-white text-black rounded-lg
+                px-4 py-2 text-sm font-medium
+                transition-all duration-300 ease-out
+                hover:bg-white/90 hover:shadow-md
+                focus:bg-white/90 focus:ring-2 focus:ring-white/20
+                active:scale-[0.98]
+                disabled:opacity-50 disabled:cursor-not-allowed
+                font-raleway
+              "
+            >
+              Execute Trade
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

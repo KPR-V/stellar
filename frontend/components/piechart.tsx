@@ -143,7 +143,7 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
 
   if (chartData.length === 0) {
     return (
-      <div className={`bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300 ${className}`}>
+      <div className={`bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300 ${className}`}>
         <div className="text-white/50 text-sm text-center py-8">
           <div className="mb-2">📊</div>
           <div>No portfolio data available</div>
@@ -154,7 +154,7 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
   }
 
   return (
-    <div className={`bg-black/40 backdrop-blur-sm rounded-xl border border-white/5 hover:border-white/8 transition-all duration-300 ${className}`}>
+    <div className={`bg-black/40 backdrop-blur-sm rounded-xl border border-white/15 hover:border-white/25 transition-all duration-300 ${className}`}>
       <div className="p-4">
         <h3 className="text-white/80 text-sm font-medium mb-4">Portfolio Allocation</h3>
         

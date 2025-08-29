@@ -1,6 +1,8 @@
 // components/profile/profile-stats.tsx
 import React, { useState, useEffect } from 'react'
 import { useWallet } from '../../hooks/useWallet'
+import PortfolioPieChart from '../piechart'
+import ProfitChart from './ProfitChart'
 
 interface ProfileStatsProps {
   isActive: boolean
@@ -13,17 +15,23 @@ const ProfileStats: React.FC<ProfileStatsProps> = ({ isActive }) => {
   const [tokenPrices, setTokenPrices] = useState<{[key: string]: number}>({})
   const [portfolioValue, setPortfolioValue] = useState('0.00')
   const [previousPortfolioValue, setPreviousPortfolioValue] = useState('0.00')
+  const [performanceMetrics, setPerformanceMetrics] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  // ✅ Fetch balances when component becomes active and every minute
+  // ✅ Fetch balances and performance metrics when component becomes active
   useEffect(() => {
     if (!isActive || !address) return
 
     fetchUserBalance() // Fetch immediately
+    fetchPerformanceMetrics() // Fetch performance metrics
 
-    const interval = setInterval(fetchUserBalance, 60000) // Every minute
+    const interval = setInterval(() => {
+      fetchUserBalance()
+      fetchPerformanceMetrics()
+    }, 60000) // Every minute
 
     return () => clearInterval(interval)
   }, [isActive, address])
@@ -95,6 +103,59 @@ const ProfileStats: React.FC<ProfileStatsProps> = ({ isActive }) => {
       console.error('❌ Error fetching user balance:', err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchPerformanceMetrics = async () => {
+    if (!address) return
+    
+    setIsLoadingMetrics(true)
+    
+    try {
+      const response = await fetch('/api/contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_user_performance_metrics',
+          userAddress: address,
+          days: 30 // Default to 30 days
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        console.log('✅ Performance metrics fetched successfully:', data.data.metrics)
+        setPerformanceMetrics(data.data.metrics)
+      } else {
+        console.error('❌ Failed to fetch performance metrics:', data.error)
+        // Set empty/default metrics on error
+        setPerformanceMetrics({
+          total_trades: 0,
+          successful_trades: 0,
+          total_profit: '0',
+          total_volume: '0',
+          success_rate: '0.00',
+          win_rate: '0.00',
+          avg_profit_per_trade: '0',
+          period_days: 30
+        })
+      }
+    } catch (err) {
+      console.error('❌ Error fetching performance metrics:', err)
+      // Set empty/default metrics on error
+      setPerformanceMetrics({
+        total_trades: 0,
+        successful_trades: 0,
+        total_profit: '0',
+        total_volume: '0',
+        success_rate: '0.00',
+        win_rate: '0.00',
+        avg_profit_per_trade: '0',
+        period_days: 30
+      })
+    } finally {
+      setIsLoadingMetrics(false)
     }
   }
 
@@ -180,10 +241,10 @@ const ProfileStats: React.FC<ProfileStatsProps> = ({ isActive }) => {
   const change24h = calculate24hChange()
 
   return (
-    <div className="p-6 space-y-6 my-8 font-raleway">
+    <div className="pt-6 pr-6 pl-6 space-y-6 font-raleway pb-28">
       {/* Header with refresh status */}
       <div className="flex justify-between items-center">
-        <h3 className="font-medium text-white/90 text-lg">Portfolio Statistics</h3>
+        <h3 className="font-medium text-white/80 text-lg">Portfolio Statistics</h3>
         <div className="text-xs text-white/50">
           {isLoading && 'Updating...'}
           {lastUpdated && !isLoading && `Updated: ${lastUpdated.toLocaleTimeString()}`}
@@ -191,103 +252,98 @@ const ProfileStats: React.FC<ProfileStatsProps> = ({ isActive }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-6">
-        <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
-          <h4 className="text-white/60 text-sm font-medium mb-2">Total Balance</h4>
+        <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300">
+          <h4 className="text-white/80 text-sm font-medium mb-2">Total Balance</h4>
           <p className="text-3xl font-light text-white/95 font-raleway">
             ${portfolioValue}
           </p>
           <p className={`text-xs mt-2 ${change24h.isPositive ? 'text-green-400' : 'text-red-400'}`}>
             {change24h.isPositive ? '+' : '-'}{change24h.percentage.toFixed(2)}% (24h)
           </p>
+          
+          {/* Profit Chart */}
+          <div className="mt-4">
+            <ProfitChart 
+              userAddress={address || ''} 
+              className="w-full"
+            />
+          </div>
         </div>
-        <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
-          <h4 className="text-white/60 text-sm font-medium mb-2">Total Assets</h4>
-          <p className="text-3xl font-light text-white/95 font-raleway">
-            {Object.keys(balances).length}
-          </p>
-          <p className="text-xs text-white/40 mt-2">From Contract</p>
+        <div className="flex items-center justify-center">
+          <PortfolioPieChart
+            balancesWithPrices={balancesWithPrices}
+            portfolioValue={portfolioValue}
+            className="w-full"
+          />
         </div>
       </div>
-      
-      <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
-        <h4 className="text-white/60 text-sm font-medium mb-4">Portfolio Breakdown</h4>
-        
-        {error && (
-          <div className="text-red-400 text-xs mb-4 p-3 bg-red-400/10 rounded-lg">
-            {error}
-          </div>
-        )}
 
-        <div className="space-y-4">
-          {Object.keys(balances).length === 0 && !isLoading ? (
-            <div className="text-white/50 text-sm text-center py-4">
-              {address ? 'No contract balances found. Initialize your account first.' : 'Connect wallet to view balances'}
-            </div>
-          ) : (
-            Object.entries(balancesWithPrices).length > 0 ? (
-              // Show balances with USD prices when available
-              Object.entries(balancesWithPrices).map(([tokenAddress, data]) => {
-                const tokenInfo = getTokenInfo(tokenAddress)
-                const balanceAmount = parseFloat(data.balance) / 10000000 // Convert from stroops
-                const totalPortfolioUsd = parseFloat(portfolioValue)
-                const percentage = totalPortfolioUsd > 0 ? ((data.usdValue / totalPortfolioUsd) * 100).toFixed(1) : '0'
-                
-                return (
-                  <div key={tokenAddress} className="flex justify-between items-center p-3 bg-black/20 rounded-lg border border-white/5">
-                    <div className="flex flex-col">
-                      <span className="text-white/90 text-sm font-medium">
-                        {tokenInfo.symbol}
-                      </span>
-                      <span className="text-white/50 text-xs">
-                        {tokenInfo.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-white/80 text-sm">
-                          {balanceAmount.toFixed(4)} {tokenInfo.symbol}
-                        </div>
-                        <div className="text-white/50 text-xs">
-                          ${data.usdValue.toFixed(2)} @ ${data.price.toFixed(4)}
-                        </div>
-                      </div>
-                      <span className="text-blue-400 text-xs bg-blue-400/10 px-2 py-1 rounded-full border border-blue-400/20">
-                        {percentage}%
-                      </span>
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              // Fallback to old format when price data not available
-              Object.entries(balances).map(([tokenAddress, balance]) => {
-                const tokenInfo = getTokenInfo(tokenAddress)
-                const percentage = calculatePercentage(balance, totalBalance.toString())
-                
-                return (
-                  <div key={tokenAddress} className="flex justify-between items-center p-3 bg-black/20 rounded-lg border border-white/5">
-                    <div className="flex flex-col">
-                      <span className="text-white/90 text-sm font-medium">
-                        {tokenInfo.symbol}
-                      </span>
-                      <span className="text-white/50 text-xs">
-                        {tokenInfo.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-white/80 text-sm">
-                        {formatBalance(balance)}
-                      </span>
-                      <span className="text-blue-400 text-xs bg-blue-400/10 px-2 py-1 rounded-full border border-blue-400/20">
-                        {percentage}%
-                      </span>
-                    </div>
-                  </div>
-                )
-              })
-            )
-          )}
+      {/* Performance Metrics Section */}
+      <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300">
+        <div className="flex justify-between items-center mb-4">
+          <h4 className="text-white/80 text-sm font-medium">Trading Performance (30 days)</h4>
+          <div className="text-xs text-white/50">
+            {isLoadingMetrics && (
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 border border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+                <span>Loading...</span>
+              </div>
+            )}
+          </div>
         </div>
+        
+        {!performanceMetrics && !isLoadingMetrics ? (
+          <div className="text-center py-8">
+            <div className="text-white/40 mb-2">📊</div>
+            <div className="text-white/60 text-sm mb-1">No trading data available</div>
+            <div className="text-white/40 text-xs">Start trading to see your performance metrics</div>
+          </div>
+        ) : performanceMetrics ? (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Total Trades */}
+              <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                <div className="text-white/50 text-xs mb-1">Total Trades</div>
+                <div className="text-white/90 text-lg font-medium">{performanceMetrics.total_trades}</div>
+              </div>
+              
+              {/* Success Rate */}
+              <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                <div className="text-white/50 text-xs mb-1">Win Rate</div>
+                <div className="text-white/90 text-lg font-medium">{performanceMetrics.win_rate}%</div>
+              </div>
+              
+              {/* Total Profit */}
+              <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                <div className="text-white/50 text-xs mb-1">Total Profit</div>
+                <div className={`text-lg font-medium ${parseFloat(performanceMetrics.total_profit) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${(parseFloat(performanceMetrics.total_profit) / 1e7).toFixed(4)}
+                </div>
+              </div>
+              
+              {/* Avg Profit Per Trade */}
+              <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                <div className="text-white/50 text-xs mb-1">Avg Profit/Trade</div>
+                <div className={`text-lg font-medium ${parseFloat(performanceMetrics.avg_profit_per_trade) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${(parseFloat(performanceMetrics.avg_profit_per_trade) / 1e7).toFixed(4)}
+                </div>
+              </div>
+            </div>
+
+            {/* Additional metrics row */}
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                <div className="text-white/50 text-xs mb-1">Successful Trades</div>
+                <div className="text-white/90 text-sm">{performanceMetrics.successful_trades} / {performanceMetrics.total_trades}</div>
+              </div>
+              
+              <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                <div className="text-white/50 text-xs mb-1">Total Volume</div>
+                <div className="text-white/90 text-sm">${(parseFloat(performanceMetrics.total_volume) / 1e7).toFixed(2)}</div>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   )

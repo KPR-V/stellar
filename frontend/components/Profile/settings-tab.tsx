@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Eye, Edit3, Save, RotateCcw, Info } from 'lucide-react'
 import { useWallet } from '../../hooks/useWallet'
 

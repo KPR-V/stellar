@@ -39,7 +39,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === 'get_user_balances') {
+      if (!userAddress) {
+        return NextResponse.json({ success: false, error: 'User address required for getting balances' }, { status: 400 });
+      }
       return await getUserBalances(userAddress);
+    }
+
+    if (action === 'get_user_performance_metrics') {
+      if (!userAddress) {
+        return NextResponse.json({ success: false, error: 'User address required for performance metrics' }, { status: 400 });
+      }
+      const { days = 30 } = params; // Default to 30 days if not specified
+      return await getUserPerformanceMetrics(userAddress, days);
+    }
+
+    if (action === 'scan_advanced_opportunities') {
+      return await scanAdvancedOpportunities();
+    }
+
+    if (action === 'get_pairs') {
+      return await getPairs()
     }
 
     if (action === 'check_user_initialized') {
@@ -465,40 +484,6 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
     
     console.log(`Using fallback price for ${tokenSymbol}: $${prices[tokenSymbol] || 0}`);
     return prices[tokenSymbol] || 0;
-    
-    /* TODO: Implement oracle integration when contract bindings are ready
-    // Create oracle client
-    const oracleAddress = tokenSymbol === 'EURC' ? FOREX_ORACLE_TESTNET : CRYPTO_ORACLE_TESTNET;
-    
-    const client = new ContractClient({
-      contractId: oracleAddress,
-      networkPassphrase: Networks.TESTNET,
-      rpcUrl: RPC_URL,
-    });
-
-    // Create asset objects for the oracle call
-    let baseAsset, quoteAsset;
-    
-    if (tokenSymbol === 'XLM') {
-      baseAsset = { Stellar: StellarAddress.fromString('CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQAHHAGCN6FM') };
-      quoteAsset = { Other: 'USD' };
-    } else if (tokenSymbol === 'USDC') {
-      return 1.0;
-    } else if (tokenSymbol === 'EURC') {
-      baseAsset = { Other: 'EUR' };
-      quoteAsset = { Other: 'USD' };
-    } else {
-      return 0;
-    }
-
-    const priceResult = await client.call('x_last_price', baseAsset, quoteAsset);
-    
-    if (priceResult && priceResult.price) {
-      const price = parseFloat(priceResult.price.toString()) / 10000000;
-      console.log(`Oracle price for ${tokenSymbol}: $${price}`);
-      return price;
-    }
-    */
 
   } catch (error) {
     console.error(`Error fetching price for ${tokenSymbol}:`, error);
@@ -511,6 +496,54 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
     };
     
     return fallbackPrices[tokenSymbol] || 0;
+  }
+}
+
+async function getUserPerformanceMetrics(userAddress: string, days: number = 30): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    const result = await client.get_user_performance_metrics({
+      user: userAddress,
+      days: days
+    }, {
+      simulate: true
+    });
+
+    console.log('Raw performance metrics result:', safeStringify(result.result));
+
+    // Format the performance metrics data and handle BigInt serialization
+    const metrics = {
+      total_trades: result.result.total_trades || 0,
+      successful_trades: result.result.successful_trades || 0,
+      total_profit: result.result.total_profit?.toString() || '0',
+      total_volume: result.result.total_volume?.toString() || '0',
+      success_rate_bps: result.result.success_rate_bps || 0,
+      avg_profit_per_trade: result.result.avg_profit_per_trade?.toString() || '0',
+      period_days: result.result.period_days || days,
+      // Calculate additional derived metrics
+      success_rate: result.result.success_rate_bps ? (result.result.success_rate_bps / 100).toFixed(2) : '0.00',
+      win_rate: result.result.total_trades > 0 ? ((result.result.successful_trades / result.result.total_trades) * 100).toFixed(2) : '0.00'
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'User performance metrics fetched successfully!',
+        metrics: metrics
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user performance metrics:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch user performance metrics'
+    });
   }
 }
 
@@ -868,6 +901,125 @@ async function withdrawUserFunds(
       success: false,
       error: errorMessage
     }, { status: 500 });
+  }
+}
+
+async function getPairs(): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    const result = await client.get_pairs({
+      simulate: true
+    });
+
+    // Format the pairs data for frontend consumption
+    const formattedPairs = result.result.map((pair: any) => ({
+      stablecoin_symbol: pair.stablecoin_symbol,
+      fiat_symbol: pair.fiat_symbol,
+      stablecoin_address: pair.stablecoin_address,
+      target_peg: pair.target_peg?.toString(),
+      deviation_threshold_bps: pair.deviation_threshold_bps
+    }));
+
+    console.log('✅ Pairs fetched successfully:', safeStringify(formattedPairs));
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Pairs fetched successfully!',
+        pairs: formattedPairs,
+        count: formattedPairs.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching pairs:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch pairs'
+    });
+  }
+}
+
+
+async function scanAdvancedOpportunities(): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    const result = await client.scan_advanced_opportunities({
+      simulate: true
+    });
+
+    console.log('=== RAW SMART CONTRACT OUTPUT ===')
+    console.log('Raw opportunities result:', safeStringify(result.result));
+    console.log('Result type:', typeof result.result)
+    console.log('Is array:', Array.isArray(result.result))
+    console.log('Length:', result.result?.length || 'N/A')
+
+    // Format the opportunities data and handle BigInt serialization
+    const formattedOpportunities = result.result.map((opportunity: any) => ({
+      base_opportunity: {
+        pair: {
+          stablecoin_symbol: opportunity.base_opportunity.pair.stablecoin_symbol,
+          stablecoin_address: opportunity.base_opportunity.pair.stablecoin_address,
+          fiat_symbol: opportunity.base_opportunity.pair.fiat_symbol
+        },
+        stablecoin_price: opportunity.base_opportunity.stablecoin_price?.toString(),
+        fiat_rate: opportunity.base_opportunity.fiat_rate?.toString(),
+        deviation_bps: opportunity.base_opportunity.deviation_bps,
+        estimated_profit: opportunity.base_opportunity.estimated_profit?.toString(),
+        trade_direction: opportunity.base_opportunity.trade_direction,
+        timestamp: opportunity.base_opportunity.timestamp?.toString()
+      },
+      cross_rate_data: {
+        primary_rate: opportunity.cross_rate_data.primary_rate?.toString(),
+        secondary_rate: opportunity.cross_rate_data.secondary_rate?.toString(),
+        deviation_bps: opportunity.cross_rate_data.deviation_bps,
+        confidence_score: opportunity.cross_rate_data.confidence_score
+      },
+      risk_assessment: {
+        liquidity_score: opportunity.risk_assessment.liquidity_score,
+        volatility_score: opportunity.risk_assessment.volatility_score,
+        market_impact_bps: opportunity.risk_assessment.market_impact_bps,
+        recommended_size: opportunity.risk_assessment.recommended_size?.toString()
+      },
+      venue_recommendations: opportunity.venue_recommendations.map((venue: any) => ({
+        venue_address: venue.venue_address,
+        venue_name: venue.venue_name,
+        expected_slippage_bps: venue.expected_slippage_bps,
+        gas_estimate: venue.gas_estimate?.toString(),
+        priority_score: venue.priority_score
+      }))
+    }));
+
+    console.log('=== FORMATTED OPPORTUNITIES OUTPUT ===')
+    console.log('Formatted opportunities count:', formattedOpportunities.length)
+    console.log('Formatted opportunities:', JSON.stringify(formattedOpportunities, null, 2))
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Advanced opportunities scanned successfully!',
+        opportunities: formattedOpportunities,
+        count: formattedOpportunities.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error scanning advanced opportunities:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to scan opportunities'
+    });
   }
 }
 
