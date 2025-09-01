@@ -78,6 +78,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return await scanAdvancedOpportunities();
     }
 
+    if (action === 'execute_user_arbitrage') {
+      return await executeUserArbitrage(userAddress, params.opportunity, params.tradeAmount, params.venueAddress);
+    }
+
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     return NextResponse.json({
@@ -1284,6 +1288,130 @@ function formatOpportunityData(opportunity: any): any {
     console.error('formatOpportunityData: Error formatting opportunity data:', error);
     console.error('formatOpportunityData: Error stack:', error instanceof Error ? error.stack : 'No stack available');
     return null;
+  }
+}
+
+async function executeUserArbitrage(
+  userAddress: string,
+  opportunity: any,
+  tradeAmount: string,
+  venueAddress: string
+): Promise<NextResponse> {
+  try {
+    console.log('Executing user arbitrage with parameters:', {
+      userAddress,
+      opportunity,
+      tradeAmount,
+      venueAddress
+    });
+
+    // Create RPC server for transaction preparation
+    const server = new SorobanRpc.Server(RPC_URL);
+
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+      publicKey: userAddress
+    });
+
+    // Convert trade amount to BigInt (assuming it's in the correct scale)
+    const tradeAmountBigInt = BigInt(tradeAmount);
+
+    // Helper function to convert string to BigInt safely
+    const stringToBigInt = (value: string): bigint => {
+      // The value is already in scaled format from the contract scan
+      // Just remove decimals and convert to BigInt
+      const cleanValue = value.split('.')[0];
+      return BigInt(cleanValue);
+    };
+
+    // Helper function to get actual token address based on symbol
+    const getTokenAddressFromSymbol = (symbol: string): string => {
+      const tokenMap: { [key: string]: string } = {
+        'XLM': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA', // XLM testnet
+        'USDC': 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // USDC testnet
+        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO', // EURC testnet
+      };
+      return tokenMap[symbol] || 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA'; // Default to XLM
+    };
+
+    // Create a properly structured opportunity for the contract
+    // Include all possible TradingVenue fields to satisfy both definitions
+    const contractOpportunity = {
+      base_opportunity: {
+        pair: {
+          stablecoin_symbol: opportunity.base_opportunity.pair.stablecoin_symbol,
+          fiat_symbol: opportunity.base_opportunity.pair.fiat_symbol,
+          stablecoin_address: getTokenAddressFromSymbol(opportunity.base_opportunity.pair.stablecoin_symbol),
+          target_peg: stringToBigInt("10000"), 
+          deviation_threshold_bps: opportunity.base_opportunity.pair.deviation_threshold_bps || 50
+        },
+        stablecoin_price: stringToBigInt(opportunity.base_opportunity.stablecoin_price),
+        fiat_rate: stringToBigInt(opportunity.base_opportunity.fiat_rate),
+        deviation_bps: opportunity.base_opportunity.deviation_bps,
+        estimated_profit: stringToBigInt(opportunity.base_opportunity.estimated_profit),
+        trade_direction: opportunity.base_opportunity.trade_direction,
+        timestamp: stringToBigInt(opportunity.base_opportunity.timestamp)
+      },
+      twap_price: opportunity.twap_price ? stringToBigInt(opportunity.twap_price) : undefined,
+      confidence_score: opportunity.confidence_score,
+      max_trade_size: stringToBigInt(opportunity.max_trade_size),
+      venue_recommendations: [{
+        // Include fields from both TradingVenue definitions
+        address: venueAddress,
+        dex_address: venueAddress,
+        name: 'SoroswapRouter',
+        enabled: true,
+        fee_bps: 30,
+        liquidity_threshold: stringToBigInt('1000000000000'),
+        min_liquidity: stringToBigInt('1000000000000')
+      }]
+    };
+
+    console.log('Converted opportunity for contract:', contractOpportunity);
+
+    // Build the transaction (simulate to get initial XDR)
+    const result = await client.execute_user_arbitrage({
+      user: userAddress,
+      opportunity: contractOpportunity,
+      trade_amount: tradeAmountBigInt,
+      venue_address: venueAddress
+    }, {
+      simulate: true
+    });
+
+    // Get the initial transaction XDR
+    const initialTx = result.toXDR();
+    
+    // Parse the transaction and prepare it with proper footprint and resources
+    const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
+    const preparedTransaction = await server.prepareTransaction(transaction);
+
+    console.log('Transaction prepared successfully:', {
+      transactionXdr: preparedTransaction.toXDR()
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Arbitrage transaction prepared for signing',
+        transactionXdr: preparedTransaction.toXDR(),
+        tradeDetails: {
+          userAddress,
+          tradeAmount: tradeAmount,
+          venueAddress,
+          opportunityPair: opportunity?.base_opportunity?.pair?.stablecoin_symbol + '/' + opportunity?.base_opportunity?.pair?.fiat_symbol
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error executing user arbitrage:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to execute arbitrage'
+    }, { status: 500 });
   }
 }
 

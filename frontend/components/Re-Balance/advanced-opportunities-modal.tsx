@@ -1,6 +1,8 @@
 'use client'
-import React, { useEffect } from 'react'
-import { X, TrendingUp, TrendingDown, Clock, Target, Zap, Building, ExternalLink, Info } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { X, TrendingUp, TrendingDown, Clock, Target, Zap, Building, ExternalLink, Info, AlertCircle, CheckCircle } from 'lucide-react'
+import { useWallet } from '../../hooks/useWallet'
+import { TransactionBuilder, Networks } from '@stellar/stellar-sdk'
 
 interface VenueRecommendation {
   address: string
@@ -47,6 +49,30 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
   onClose,
   opportunity
 }) => {
+  const { address, walletKit } = useWallet()
+  const [selectedVenue, setSelectedVenue] = useState<string>('')
+  const [tradeAmount, setTradeAmount] = useState<string>('')
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [executionResult, setExecutionResult] = useState<any>(null)
+  const [executionError, setExecutionError] = useState<string>('')
+
+  // Venue address mapping
+  const venueAddressMap: { [key: string]: string } = {
+    'Soroswap': 'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS',
+    'Soroswap Router': 'CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH'
+  }
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedVenue('')
+      setTradeAmount('')
+      setIsExecuting(false)
+      setExecutionResult(null)
+      setExecutionError('')
+    }
+  }, [isOpen])
+
   // Tooltip information for each value
   const tooltipInfo = {
     direction: "Indicates whether to BUY or SELL to capitalize on the arbitrage opportunity. BUY when stablecoin is underpriced, SELL when overpriced.",
@@ -123,6 +149,374 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
     if (address === 'UNKNOWN_ADDRESS') return address
     if (address.length <= 16) return address
     return `${address.slice(0, 8)}...${address.slice(-8)}`
+  }
+
+  const executeArbitrage = async () => {
+    if (!address) {
+      setExecutionError('Please connect your wallet first')
+      return
+    }
+
+    if (!selectedVenue) {
+      setExecutionError('Please select a trading venue')
+      return
+    }
+
+    if (!tradeAmount || parseFloat(tradeAmount) <= 0) {
+      setExecutionError('Please enter a valid trade amount')
+      return
+    }
+
+    // Convert USD amount to stablecoin amount based on current price
+    const stablecoinPriceUsd = parseFloat(opportunity.base_opportunity.stablecoin_price) / 1e7
+    const usdAmount = parseFloat(tradeAmount)
+    const stablecoinAmount = usdAmount / stablecoinPriceUsd
+    const tradeAmountScaled = Math.floor(stablecoinAmount * 1e7).toString()
+    const venueAddress = venueAddressMap[selectedVenue]
+    
+    console.log('💱 Currency conversion:', {
+      usdInput: usdAmount,
+      stablecoinPriceUsd: stablecoinPriceUsd.toFixed(6),
+      stablecoinAmount: stablecoinAmount.toFixed(6),
+      tradeAmountScaled: tradeAmountScaled,
+      symbol: opportunity.base_opportunity.pair.stablecoin_symbol
+    })
+
+    setIsExecuting(true)
+    setExecutionError('')
+    setExecutionResult(null)
+
+    try {
+      console.log('Executing arbitrage trade with params:', {
+        userAddress: address,
+        opportunity,
+        tradeAmount: tradeAmountScaled,
+        venueAddress,
+        selectedVenue
+      })
+
+      // Step 0: Check if user is initialized before attempting trade
+      console.log('🔍 Checking user initialization status...')
+      const initCheckResponse = await fetch('/api/contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'check_user_initialized',
+          userAddress: address
+        }),
+      })
+      
+      const initCheckData = await initCheckResponse.json()
+      console.log('📋 User initialization check:', initCheckData)
+      
+      if (!initCheckData.success || !initCheckData.data?.isInitialized) {
+        setExecutionError('❌ User account not initialized. Please initialize your account first from the Profile page.')
+        return
+      }
+
+      // Step 0.5: Additional pre-trade checks
+      console.log('💰 Checking user balances and configuration...')
+      try {
+        const [balanceResponse, configResponse] = await Promise.all([
+          fetch('/api/contract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'get_user_balances',
+              userAddress: address
+            }),
+          }),
+          fetch('/api/contract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'get_user_config',
+              userAddress: address
+            }),
+          })
+        ])
+        
+        const balanceData = await balanceResponse.json()
+        const configData = await configResponse.json()
+        
+        console.log('💳 User balances:', balanceData.data)
+        console.log('⚙️ User config:', configData.data)
+        
+        // Check if trading is enabled
+        if (configData.success && !configData.data?.config?.enabled) {
+          setExecutionError('❌ Trading is disabled in your configuration. Please enable it in the Profile page.')
+          return
+        }
+      } catch (preCheckError) {
+        console.log('⚠️ Pre-trade checks failed:', preCheckError)
+        // Continue anyway - these are just diagnostic checks
+      }
+
+      // Step 1: Prepare the transaction
+      const response = await fetch('/api/contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'execute_user_arbitrage',
+          userAddress: address,
+          opportunity: opportunity,
+          tradeAmount: tradeAmountScaled,
+          venueAddress: venueAddress,
+        }),
+      })
+
+      const data = await response.json()
+      console.log('✅ Execute User Arbitrage API Response:')
+      console.log('📊 Response Status:', response.status)
+      console.log('💫 Response Data:', {
+        success: data.success,
+        message: data.data?.message,
+        tradeDetails: {
+          userAddress: address,
+          selectedVenue: selectedVenue,
+          venueAddress: venueAddress,
+          tradeAmount: tradeAmountScaled,
+          opportunityPair: `${opportunity.base_opportunity.pair.stablecoin_symbol}/${opportunity.base_opportunity.pair.fiat_symbol}`
+        }
+      })
+      console.log('🔐 Transaction XDR Length:', data.data?.transactionXdr?.length || 'N/A')
+
+      if (data.success && data.data.transactionXdr) {
+        console.log('✅ Transaction prepared successfully, prompting wallet to sign...')
+        
+        // Step 2: Sign the transaction with user's wallet
+        if (!walletKit) {
+          setExecutionError('Wallet not connected properly')
+          return
+        }
+
+        try {
+          // Sign the transaction
+          const signedTransaction = await walletKit.signTransaction(data.data.transactionXdr, {
+            networkPassphrase: 'Test SDF Network ; September 2015'
+          })
+
+          console.log('✅ Transaction signed successfully:', signedTransaction)
+          
+          // Step 3: Submit the signed transaction using our enhanced submit endpoint
+          try {
+            // Validate signed XDR before submission
+            try {
+              console.log('Validating signed XDR before submission...');
+              const validatedTx = TransactionBuilder.fromXDR(signedTransaction.signedTxXdr, Networks.TESTNET);
+              console.log('Signed XDR validation successful');
+              console.log('Signed XDR first 200 chars:', signedTransaction.signedTxXdr.substring(0, 200));
+            } catch (validationError) {
+              console.error('CRITICAL: Signed XDR is corrupted!', validationError);
+              throw new Error(`Wallet returned corrupted XDR: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
+            }
+
+            // Submit the signed transaction using our enhanced submit endpoint
+            const submitResponse = await fetch('/api/contract/submit', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ signedXdr: signedTransaction.signedTxXdr }),
+            })
+
+            const submitResult = await submitResponse.json()
+
+            if (submitResult.success) {
+              console.log('✅ Arbitrage transaction confirmed:', submitResult.data)
+              
+              // Check contract execution status first
+              const contractStatus = submitResult.data?.contractStatus || submitResult.data?.result?.status
+              
+              if (contractStatus && contractStatus !== 'SUCCESS') {
+                // Transaction was successful on blockchain, but contract execution failed
+                console.log('⚠️ Contract execution failed with status:', contractStatus)
+                
+                let contractErrorMessage = ''
+                if (contractStatus === 'INSUFFICIENT_USER_BALANCE') {
+                  contractErrorMessage = `❌ Insufficient Balance in Contract
+
+The transaction was submitted successfully, but your arbitrage bot account doesn't have enough funds deposited to execute this trade.
+
+💰 USD Amount: $${tradeAmount}
+🪙 Required: ${(usdAmount / stablecoinPriceUsd).toFixed(6)} ${opportunity.base_opportunity.pair.stablecoin_symbol}
+💵 Token Price: $${stablecoinPriceUsd.toFixed(6)} per ${opportunity.base_opportunity.pair.stablecoin_symbol}
+
+📝 To deposit funds:
+1. Click on your Profile (top-right corner)
+2. Go to the "Activity" tab  
+3. Use the "Deposit" section to add ${opportunity.base_opportunity.pair.stablecoin_symbol} tokens
+4. Deposit at least ${(usdAmount / stablecoinPriceUsd).toFixed(6)} ${opportunity.base_opportunity.pair.stablecoin_symbol}
+5. Return here to execute the trade
+
+🔗 Transaction Hash: ${submitResult.data.hash}`
+                } else {
+                  contractErrorMessage = `❌ Contract Execution Failed: ${contractStatus}
+
+The transaction was submitted successfully, but the contract execution failed.
+
+Please check your account configuration in the Profile page.
+
+🔗 Transaction Hash: ${submitResult.data.hash}`
+                }
+                
+                setExecutionError(contractErrorMessage)
+                return
+              }
+              
+              // Automatically fetch updated trade history after successful execution
+              try {
+                console.log('📊 Fetching updated user trade history...')
+                const historyResponse = await fetch('/api/contract', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    action: 'get_user_trade_history',
+                    userAddress: address,
+                    limit: 5 // Get last 5 trades
+                  }),
+                })
+
+                const historyData = await historyResponse.json()
+                if (historyData.success) {
+                  console.log('✅ Updated trade history:', historyData.data)
+                  console.log('📈 Total trades count:', historyData.data.count)
+                  
+                  if (historyData.data.count === 0) {
+                    console.log('⚠️ WARNING: Trade history is empty after successful transaction!')
+                    console.log('🔍 This indicates the contract execution may have failed internally')
+                    console.log('� Common causes:')
+                    console.log('   - User account not properly initialized')
+                    console.log('   - Insufficient balance in contract')
+                    console.log('   - Risk limits exceeded')
+                    console.log('   - Contract validation failed')
+                    console.log('📝 Transaction Hash for investigation:', submitResult.data.hash)
+                  } else {
+                    console.log('�💰 Latest trade details:', historyData.data.trades[historyData.data.trades.length - 1])
+                  }
+                } else {
+                  console.log('⚠️ Could not fetch updated trade history:', historyData.error)
+                }
+              } catch (historyError) {
+                console.log('⚠️ Error fetching trade history:', historyError)
+              }
+              
+              // Handle different success statuses
+              if (submitResult.data.status === 'SUCCESS_BUT_RESULT_UNPARSEABLE') {
+                setExecutionResult({
+                  ...data.data,
+                  transactionHash: submitResult.data.hash,
+                  status: 'SUCCESS',
+                  stablecoinAmount: stablecoinAmount,
+                  message: `Arbitrage transaction completed successfully! 
+
+Hash: ${submitResult.data.hash}
+
+Note: Due to a Horizon server issue, we couldn't retrieve the full transaction details, but the transaction likely succeeded. You can check the status on Stellar Expert.`
+                })
+              } else {
+                setExecutionResult({
+                  ...data.data,
+                  transactionHash: submitResult.data.hash,
+                  status: submitResult.data.status,
+                  stablecoinAmount: stablecoinAmount,
+                  message: 'Arbitrage transaction completed successfully!',
+                  finalResult: submitResult.data
+                })
+              }
+            } else {
+              console.error('❌ Arbitrage transaction failed:', submitResult)
+              
+              // Enhanced error handling with specific checks for contract execution status
+              let errorMessage = submitResult.error || 'Transaction failed'
+              let isContractError = false
+              
+              // Parse contract execution errors from the transaction result
+              const contractStatus = submitResult.data?.contractStatus || submitResult.data?.result?.status
+              
+              if (contractStatus && contractStatus !== 'SUCCESS') {
+                isContractError = true
+                console.log('Contract execution status:', contractStatus)
+                
+                if (contractStatus === 'INSUFFICIENT_USER_BALANCE') {
+                  errorMessage = `❌ Insufficient Balance in Contract
+
+Your arbitrage bot account doesn't have enough funds deposited to execute this trade.
+
+💰 USD Amount: $${tradeAmount}
+🪙 Required: ${(usdAmount / stablecoinPriceUsd).toFixed(6)} ${opportunity.base_opportunity.pair.stablecoin_symbol}
+💵 Token Price: $${stablecoinPriceUsd.toFixed(6)} per ${opportunity.base_opportunity.pair.stablecoin_symbol}
+
+📝 To deposit funds:
+1. Click on your Profile (top-right corner)
+2. Go to the "Activity" tab
+3. Use the "Deposit" section to add ${opportunity.base_opportunity.pair.stablecoin_symbol} tokens
+4. Deposit at least ${(usdAmount / stablecoinPriceUsd).toFixed(6)} ${opportunity.base_opportunity.pair.stablecoin_symbol}
+5. Return here to execute the trade
+
+Note: The transaction was submitted successfully, but the trade couldn't be executed due to insufficient contract balance.`
+                } else if (contractStatus === 'USER_INACTIVE') {
+                  errorMessage = '❌ Your arbitrage bot account is inactive. Please activate it in your Profile settings.'
+                } else if (contractStatus === 'USER_POSITION_TOO_LARGE') {
+                  errorMessage = '❌ Trade amount exceeds your maximum position size limit. Please reduce the trade amount or update your risk limits in Profile settings.'
+                } else if (contractStatus === 'USER_DAILY_LIMIT_EXCEEDED') {
+                  errorMessage = '❌ This trade would exceed your daily volume limit. Please wait until tomorrow or increase your daily limit in Profile settings.'
+                } else if (contractStatus === 'USER_BOT_DISABLED') {
+                  errorMessage = '❌ Your arbitrage bot is disabled. Please enable it in your Profile configuration.'
+                } else {
+                  errorMessage = `❌ Contract execution failed with status: ${contractStatus}. Please check your account configuration.`
+                }
+              }
+              
+              // Fallback for non-contract errors
+              if (!isContractError) {
+                if (errorMessage.includes('not initialized')) {
+                  errorMessage = '❌ Account not initialized. Please initialize your account first from the Profile page.'
+                } else if (errorMessage.includes('insufficient')) {
+                  errorMessage = '❌ Insufficient balance or allowance for this transaction.'
+                } else if (errorMessage.includes('auth')) {
+                  errorMessage = '❌ Authentication failed. Please check your wallet connection.'
+                }
+              }
+              
+              setExecutionError(errorMessage)
+              
+              // Log detailed error information for debugging
+              if (submitResult.details) {
+                console.error('Detailed error information:', submitResult.details)
+              }
+            }
+            
+          } catch (submitError) {
+            console.error('❌ Transaction submission failed:', submitError)
+            setExecutionError(`Transaction submission failed: ${submitError instanceof Error ? submitError.message : 'Unknown error'}`)
+          }
+
+        } catch (signError) {
+          console.error('❌ Transaction signing failed:', signError)
+          if (signError instanceof Error && signError.message.includes('User declined')) {
+            setExecutionError('Transaction was cancelled by user')
+          } else {
+            setExecutionError(`Transaction signing failed: ${signError instanceof Error ? signError.message : 'Unknown error'}`)
+          }
+        }
+
+      } else {
+        setExecutionError(data.error || 'Failed to prepare arbitrage transaction')
+        console.error('❌ Transaction preparation failed:', data.error)
+      }
+    } catch (err) {
+      console.error('❌ Network error during arbitrage execution:', err)
+      setExecutionError('Network error while executing arbitrage')
+    } finally {
+      setIsExecuting(false)
+    }
   }
 
   return (
@@ -365,29 +759,125 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
 
             {/* Venue Recommendations */}
             <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15">
-              <h3 className="text-white/90 font-medium text-lg mb-4 flex items-center gap-2">
+              <h3 className="text-white/90 font-medium text-lg mb-2 flex items-center gap-2">
                 <Building size={18} />
                 Recommended Trading Venues
               </h3>
+              <p className="text-white/60 text-xs mb-4">
+                <Info size={12} className="inline mr-1" />
+                Note: You must select one venue before executing the trade
+              </p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {opportunity.venue_recommendations.map((venue, index) => (
-                  <div key={index} className="bg-black/20 rounded-lg p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${
-                        venue.enabled ? 'bg-green-400' : 'bg-red-400'
-                      }`} />
-                      <div>
-                        <div className="text-white/90 font-medium text-sm">{venue.name}</div>
-                        <div className="text-white/50 text-xs">
-                          Fee: {(venue.fee_bps / 100).toFixed(2)}% • Min: ${formatLargeNumber(venue.liquidity_threshold)}
+              <div className="space-y-3">
+                {/* Hardcoded venues for testnet */}
+                {[
+                  { name: 'Soroswap', enabled: true, fee_bps: 30, liquidity_threshold: '1000000000000' },
+                  { name: 'Soroswap Router', enabled: true, fee_bps: 25, liquidity_threshold: '500000000000' }
+                ].map((venue, index) => (
+                  <div key={index} className="bg-black/20 rounded-lg p-4">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="venue"
+                          value={venue.name}
+                          checked={selectedVenue === venue.name}
+                          onChange={(e) => setSelectedVenue(e.target.value)}
+                          className="w-4 h-4 text-blue-500 bg-transparent border-2 border-white/30 rounded-full focus:ring-blue-500 focus:ring-2"
+                        />
+                        <div className={`w-2 h-2 rounded-full ${
+                          venue.enabled ? 'bg-green-400' : 'bg-red-400'
+                        }`} />
+                        <div>
+                          <div className="text-white/90 font-medium text-sm">{venue.name}</div>
+                          <div className="text-white/50 text-xs">
+                            Fee: {(venue.fee_bps / 100).toFixed(2)}% • Min: ${formatLargeNumber(venue.liquidity_threshold)}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </label>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* Trade Amount Input */}
+            <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15">
+              <h3 className="text-white/90 font-medium text-lg mb-4 flex items-center gap-2">
+                <Target size={18} />
+                Trade Amount (USD)
+              </h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={formatLargeNumber(opportunity.max_trade_size)}
+                    value={tradeAmount}
+                    onChange={(e) => setTradeAmount(e.target.value)}
+                    placeholder="Enter trade amount in USD"
+                    className="w-full bg-black/20 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:border-white/40 focus:ring-1 focus:ring-white/20 focus:outline-none"
+                  />
+                  <div className="flex justify-between text-xs text-white/50 mt-2">
+                    <span>Min: $1.00</span>
+                    <span>Max: ${formatLargeNumber(opportunity.max_trade_size)}</span>
+                  </div>
+                </div>
+
+                {/* Quick amount buttons */}
+                <div className="flex gap-2">
+                  {[25, 50, 100, 250].map((amount) => (
+                    <button
+                      key={amount}
+                      onClick={() => setTradeAmount(amount.toString())}
+                      className="flex-1 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs text-white/70 transition-all"
+                    >
+                      ${amount}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Execution Status */}
+            {executionResult && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-5">
+                <div className="flex items-center gap-2 text-green-400 mb-2">
+                  <CheckCircle size={16} />
+                  <span className="text-sm font-medium">Transaction Status: {executionResult.status || 'PREPARED'}</span>
+                </div>
+                <p className="text-green-300 text-sm mb-3">{executionResult.message}</p>
+                <div className="text-xs text-white/60">
+                  <p><strong>Trade Details:</strong></p>
+                  <p>• USD Amount: ${tradeAmount}</p>
+                  <p>• Token Amount: {executionResult.stablecoinAmount?.toFixed(6)} {opportunity.base_opportunity.pair.stablecoin_symbol}</p>
+                  <p>• Venue: {selectedVenue}</p>
+                  <p>• Pair: {executionResult.tradeDetails?.opportunityPair}</p>
+                  {executionResult.transactionHash && (
+                    <p>• Transaction: <a 
+                      href={`https://stellar.expert/explorer/testnet/tx/${executionResult.transactionHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      {executionResult.transactionHash.substring(0, 12)}...
+                    </a></p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {executionError && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5">
+                <div className="flex items-center gap-2 text-red-400 mb-2">
+                  <AlertCircle size={16} />
+                  <span className="text-sm font-medium">Execution Error</span>
+                </div>
+                <p className="text-red-300 text-sm">{executionError}</p>
+              </div>
+            )}
 
           </div>
         </div>
@@ -396,17 +886,21 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
         <div className="flex items-center justify-end gap-3 p-6 pt-4 border-t border-white/5 bg-black/10">
           
           <button 
-            className="
-              bg-white text-black rounded-lg
-              px-4 py-2 text-sm font-medium
+            onClick={executeArbitrage}
+            disabled={isExecuting || !address || !selectedVenue || !tradeAmount}
+            className={`
+              px-4 py-2 text-sm font-medium rounded-lg
               transition-all duration-300 ease-out
-              hover:bg-white/90 hover:shadow-md
-              focus:bg-white/90 focus:ring-2 focus:ring-white/20
+              focus:ring-2 focus:ring-white/20
               active:scale-[0.98]
               font-raleway
-            "
+              ${isExecuting || !address || !selectedVenue || !tradeAmount
+                ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                : 'bg-white text-black hover:bg-white/90 hover:shadow-md focus:bg-white/90'
+              }
+            `}
           >
-            Execute Trade
+            {isExecuting ? 'Executing...' : 'Execute Trade'}
           </button>
         </div>
       </div>

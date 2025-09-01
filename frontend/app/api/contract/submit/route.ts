@@ -162,12 +162,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         console.log('Transaction confirmed successfully');
         const returnValue = 'returnValue' in getResult ? getResult.returnValue : undefined;
         
+        // Try to parse the contract execution result if it's from execute_user_arbitrage
+        let contractResult = null;
+        let contractStatus = 'SUCCESS';
+        
+        if (returnValue) {
+          try {
+            console.log('Attempting to parse contract return value:', returnValue);
+            
+            // The returnValue should contain the TradeExecution result
+            // We need to extract the status field to check if the contract execution actually succeeded
+            if (returnValue && typeof returnValue === 'object' && 'status' in returnValue) {
+              contractStatus = String(returnValue.status);
+              contractResult = returnValue;
+              console.log('Extracted contract execution status:', contractStatus);
+            } else if (returnValue && typeof returnValue === 'object') {
+              // Try to find status in nested structure
+              for (const [key, value] of Object.entries(returnValue)) {
+                if (key === 'status') {
+                  contractStatus = String(value);
+                  contractResult = returnValue;
+                  console.log('Found contract status:', contractStatus);
+                  break;
+                } else if (typeof value === 'object' && value && 'status' in value) {
+                  contractStatus = String((value as any).status);
+                  contractResult = returnValue;
+                  console.log('Found contract status in nested structure:', contractStatus);
+                  break;
+                }
+              }
+            }
+          } catch (parseError) {
+            console.error('Failed to parse contract return value:', parseError);
+            // Continue with transaction success even if we can't parse the contract result
+          }
+        }
+        
         return NextResponse.json({
           success: true,
           data: { 
             hash: result.hash,
             status: finalStatus,
-            message: 'Transaction executed successfully',
+            contractStatus: contractStatus,
+            message: contractStatus !== 'SUCCESS' 
+              ? `Transaction succeeded but contract execution had status: ${contractStatus}`
+              : 'Transaction executed successfully',
+            result: contractResult,
             returnValue: returnValue
           }
         });
