@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useRebalance } from '../../hooks/useRebalance'
 import BotStatistics from './bot-statistics'
+import ScanAdvancedOpportunities from './scan-advanced-opportunities'
 
 interface ReBalanceModalProps {
   className?: string
@@ -40,8 +41,9 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
     switch (activeTab) {
       case 'Arbitrage-Bot':
         return (
-          <div className="p-6">
-          </div>
+          <ScanAdvancedOpportunities 
+            onOpportunitiesChange={handleOpportunitiesChange} 
+          />
         )
 
       case 'Arbitrage-Manual':

@@ -74,6 +74,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return await withdrawUserFunds(userAddress, params.tokenAddress, params.amount, params.isNative, params.assetCode);
     }
 
+    if (action === 'scan_advanced_opportunities') {
+      return await scanAdvancedOpportunities();
+    }
+
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     return NextResponse.json({
@@ -1002,18 +1006,197 @@ function normalizeOraclePrice(rawPrice: string | bigint, decimals: number = 7): 
   return normalizedPrice.toFixed(6); // Show up to 6 decimal places for precision
 }
 
-// Helper function to estimate gas cost (mirrors dex.rs estimate_gas_cost)
-function estimateGasCostFromContract(complexityScore: number): bigint {
-  const baseCost = BigInt(100000);
-  const variableCost = BigInt(complexityScore) * BigInt(2500);
-  
-  // Simulate network multiplier (use a reasonable default)
-  const networkMultiplier = BigInt(120); // 1.2x multiplier
-  
-  return ((baseCost + variableCost) * networkMultiplier) / BigInt(100);
+// Helper function to parse Stellar Contract Values (SCV)
+function parseScvValue(scvData: any): any {
+  if (!scvData || !scvData._switch) {
+    console.log('parseScvValue: No scvData or _switch found');
+    return null;
+  }
+
+  console.log('parseScvValue: Processing SCV type:', scvData._switch.name);
+
+  switch (scvData._switch.name) {
+    case 'scvVec':
+      console.log('parseScvValue: Processing scvVec with length:', scvData._value?.length || 0);
+      return scvData._value ? scvData._value.map((item: any, index: number) => {
+        console.log(`parseScvValue: Processing vec item ${index}`);
+        return parseScvValue(item);
+      }) : [];
+    
+    case 'scvMap':
+      console.log('parseScvValue: Processing scvMap with entries:', scvData._value?.length || 0);
+      const result: any = {};
+      if (scvData._value) {
+        scvData._value.forEach((entry: any, index: number) => {
+          console.log(`parseScvValue: Processing map entry ${index}`);
+          const key = parseScvValue(entry._attributes.key);
+          const val = parseScvValue(entry._attributes.val);
+          console.log(`parseScvValue: Map entry ${index} - key: ${key}, val type: ${typeof val}`);
+          if (key !== null) {
+            result[key] = val;
+          }
+        });
+      }
+      console.log('parseScvValue: Map result keys:', Object.keys(result));
+      return result;
+    
+    case 'scvSymbol':
+      if (scvData._value && scvData._value.data) {
+        const symbol = Buffer.from(scvData._value.data).toString('utf8');
+        console.log('parseScvValue: Symbol value:', symbol);
+        return symbol;
+      }
+      console.log('parseScvValue: Symbol fallback value:', scvData._value);
+      return scvData._value || null;
+    
+    case 'scvU32':
+      console.log('parseScvValue: U32 value:', scvData._value);
+      return scvData._value || 0;
+    
+    case 'scvU64':
+      const u64Value = scvData._value ? scvData._value._value || scvData._value : 0;
+      console.log('parseScvValue: U64 value:', u64Value);
+      return u64Value;
+    
+    case 'scvI128':
+      if (scvData._value && scvData._value._attributes) {
+        const hi = BigInt(scvData._value._attributes.hi._value || 0);
+        const lo = BigInt(scvData._value._attributes.lo._value || 0);
+        const result = (hi * BigInt('18446744073709551616')) + lo; // 2^64
+        console.log('parseScvValue: I128 value:', result.toString());
+        return result;
+      }
+      console.log('parseScvValue: I128 fallback to 0');
+      return BigInt(0);
+    
+    case 'scvBool':
+      console.log('parseScvValue: Bool value:', scvData._value);
+      return scvData._value || false;
+    
+    case 'scvAddress':
+      if (scvData._value) {
+        if (scvData._value._switch?.name === 'scAddressTypeContract') {
+          const contractId = scvData._value._value;
+          if (contractId && contractId.data) {
+            // Convert raw bytes to hex string
+            const hexData = Buffer.from(contractId.data).toString('hex').toUpperCase();
+            const address = `CONTRACT_${hexData}`;
+            console.log('parseScvValue: Contract address:', address);
+            return address;
+          }
+        } else if (scvData._value._switch?.name === 'scAddressTypeAccount') {
+          const accountId = scvData._value._value;
+          if (accountId && accountId._value && accountId._value.data) {
+            // Convert raw bytes to hex string
+            const hexData = Buffer.from(accountId._value.data).toString('hex').toUpperCase();
+            const address = `ACCOUNT_${hexData}`;
+            console.log('parseScvValue: Account address:', address);
+            return address;
+          }
+        }
+      }
+      console.log('parseScvValue: Unknown address type');
+      return 'UNKNOWN_ADDRESS';
+    
+    default:
+      console.warn('parseScvValue: Unknown SCV type:', scvData._switch.name);
+      return scvData._value || null;
+  }
 }
 
-async function scanOpportunities(): Promise<NextResponse> {
+// Helper function to format parsed opportunity data
+function formatOpportunityData(opportunity: any): any {
+  if (!opportunity || typeof opportunity !== 'object') {
+    console.log('formatOpportunityData: opportunity is null, undefined, or not an object');
+    return null;
+  }
+
+  console.log('formatOpportunityData: processing opportunity keys:', Object.keys(opportunity));
+
+  // Helper function to convert Buffer to string
+  const bufferToString = (bufferObj: any): string => {
+    console.log('bufferToString input:', typeof bufferObj, bufferObj);
+    
+    // Handle Node.js Buffer objects directly
+    if (Buffer.isBuffer(bufferObj)) {
+      const result = bufferObj.toString('utf8');
+      console.log('bufferToString converted Buffer directly:', result);
+      return result;
+    }
+    
+    // Handle JSON-serialized Buffer objects with {type: 'Buffer', data: [...]}
+    if (bufferObj && typeof bufferObj === 'object' && bufferObj.type === 'Buffer' && Array.isArray(bufferObj.data)) {
+      const result = Buffer.from(bufferObj.data).toString('utf8');
+      console.log('bufferToString converted JSON Buffer:', result);
+      return result;
+    }
+    
+    if (typeof bufferObj === 'string') {
+      return bufferObj;
+    }
+    
+    console.log('bufferToString fallback:', bufferObj);
+    return bufferObj || '';
+  };
+
+  try {
+    // Based on the actual parsed SCV structure from the logs
+    const baseOpp = opportunity.base_opportunity;
+    
+    if (!baseOpp || typeof baseOpp !== 'object') {
+      console.log('formatOpportunityData: no base_opportunity found or invalid type, available keys:', Object.keys(opportunity));
+      return null;
+    }
+
+    console.log('formatOpportunityData: base_opportunity keys:', Object.keys(baseOpp));
+    
+    // Get pair data
+    const pair = baseOpp.pair;
+    if (!pair || typeof pair !== 'object') {
+      console.log('formatOpportunityData: no pair found in base_opportunity');
+      return null;
+    }
+
+    console.log('formatOpportunityData: pair keys:', Object.keys(pair));
+
+    const formatted = {
+      base_opportunity: {
+        pair: {
+          stablecoin_symbol: bufferToString(pair.stablecoin_symbol),
+          fiat_symbol: bufferToString(pair.fiat_symbol),
+          stablecoin_address: bufferToString(pair.stablecoin_address),
+          target_peg: normalizeOraclePrice(pair.target_peg || 0, 4),
+          deviation_threshold_bps: pair.deviation_threshold_bps || 0
+        },
+        stablecoin_price: normalizeOraclePrice(baseOpp.stablecoin_price || 0, 7),
+        fiat_rate: normalizeOraclePrice(baseOpp.fiat_rate || 0, 7),
+        deviation_bps: baseOpp.deviation_bps || 0,
+        estimated_profit: normalizeOraclePrice(baseOpp.estimated_profit || 0, 7),
+        trade_direction: bufferToString(baseOpp.trade_direction),
+        timestamp: baseOpp.timestamp?.toString() || '0'
+      },
+      twap_price: opportunity.twap_price ? normalizeOraclePrice(opportunity.twap_price, 7) : null,
+      confidence_score: opportunity.confidence_score || 0,
+      max_trade_size: normalizeOraclePrice(opportunity.max_trade_size || 0, 7),
+      venue_recommendations: (opportunity.venue_recommendations || []).map((venue: any) => ({
+        address: bufferToString(venue.address),
+        name: bufferToString(venue.name),
+        enabled: venue.enabled !== undefined ? venue.enabled : false,
+        fee_bps: venue.fee_bps || 0,
+        liquidity_threshold: normalizeOraclePrice(venue.liquidity_threshold || 0, 7)
+      }))
+    };
+
+    console.log('formatOpportunityData: successfully formatted opportunity');
+    return formatted;
+  } catch (error) {
+    console.error('formatOpportunityData: Error formatting opportunity data:', error);
+    console.error('formatOpportunityData: Error stack:', error instanceof Error ? error.stack : 'No stack available');
+    return null;
+  }
+}
+
+async function scanAdvancedOpportunities(): Promise<NextResponse> {
   try {
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
@@ -1021,68 +1204,109 @@ async function scanOpportunities(): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     });
 
-    console.log('=== CALLING SCAN_OPPORTUNITIES FUNCTION ===')
+    console.log('Calling scan_advanced_opportunities...');
     
-    const result = await client.scan_opportunities({
+    const assembledTx = await client.scan_advanced_opportunities({
       simulate: true
     });
 
-    console.log('=== RAW SCAN_OPPORTUNITIES OUTPUT ===')
-    console.log('Raw opportunities result:', safeStringify(result.result));
-    console.log('Result type:', typeof result.result)
-    console.log('Is array:', Array.isArray(result.result))
-    console.log('Length:', result.result?.length || 'N/A')
+    console.log('Raw scan_advanced_opportunities result structure:', Object.keys(assembledTx));
+    
+    let opportunities: any[] = [];
 
-    // Check if result is an array of opportunities
-    const opportunities = Array.isArray(result.result) ? result.result : [];
+    try {
+      // Access the simulation result from the assembled transaction
+      if (assembledTx && typeof assembledTx === 'object') {
+        console.log('Assembled transaction keys:', Object.keys(assembledTx));
+        
+        // The result is in the simulation property
+        if ((assembledTx as any).simulation && (assembledTx as any).simulation.result) {
+          console.log('Found simulation result');
+          const simulationResult = (assembledTx as any).simulation.result;
+          console.log('Found opportunities from simulation.result:', simulationResult ? 'YES' : 'NO');
+          console.log('Simulation result details:', safeStringify(simulationResult));
+          
+          // Parse the SCV data structure - check retval for the vector
+          if (simulationResult && simulationResult.retval && simulationResult.retval._switch?.name === 'scvVec') {
+            console.log('SCV Vec detected in retval, parsing...');
+            const rawOpportunities = parseScvValue(simulationResult.retval);
+            console.log('parseScvValue returned:', rawOpportunities ? 'data' : 'null');
+            console.log('parseScvValue type:', typeof rawOpportunities);
+            console.log('parseScvValue isArray:', Array.isArray(rawOpportunities));
+            
+            if (rawOpportunities) {
+              console.log('Raw opportunities length/keys:', Array.isArray(rawOpportunities) ? rawOpportunities.length : Object.keys(rawOpportunities));
+            }
+            
+            console.log('Parsed raw opportunities:', rawOpportunities?.length || 0);
+            
+            if (Array.isArray(rawOpportunities)) {
+              console.log('Processing rawOpportunities array of length:', rawOpportunities.length);
+              
+              // Apply the formatting function to convert from parsed SCV to proper structure
+              opportunities = rawOpportunities.map((opp, index) => {
+                console.log(`\n=== Processing opportunity ${index + 1} ===`);
+                console.log('Raw opportunity type:', typeof opp);
+                console.log('Raw opportunity keys:', opp && typeof opp === 'object' ? Object.keys(opp) : 'N/A');
+                
+                const formatted = formatOpportunityData(opp);
+                console.log(`Opportunity ${index + 1} formatted result:`, formatted ? 'SUCCESS' : 'FAILED');
+                
+                return formatted;
+              }).filter(Boolean);
+              
+              console.log('Successfully formatted opportunities count:', opportunities.length);
+              console.log('Filtered out opportunities count:', rawOpportunities.length - opportunities.length);
+            } else {
+              console.log('rawOpportunities is not an array, type:', typeof rawOpportunities);
+            }
+          } else {
+            console.log('No scvVec found in simulation result retval or simulationResult/retval is null');
+            if (simulationResult) {
+              console.log('SimulationResult keys:', Object.keys(simulationResult));
+              if (simulationResult.retval) {
+                console.log('Retval keys:', Object.keys(simulationResult.retval));
+                console.log('Retval _switch name:', simulationResult.retval._switch?.name);
+              }
+            }
+          }
+        } else {
+          console.log('No simulation result found in assembled transaction');
+          if ((assembledTx as any).simulation) {
+            console.log('Simulation object keys:', Object.keys((assembledTx as any).simulation));
+          }
+        }
+      }
+      
+      if (opportunities.length === 0) {
+        console.log('No opportunities found - this might be normal if no arbitrage opportunities exist');
+      }
 
-    // Format the opportunities data with proper price normalization
-    const formattedOpportunities = opportunities.map((opportunity: any) => {
-      const rawStablecoinPrice = opportunity.stablecoin_price?.toString() || '0';
-      const rawFiatRate = opportunity.fiat_rate?.toString() || '0';
-      const rawEstimatedProfit = opportunity.estimated_profit?.toString() || '0';
+    } catch (parseError) {
+      console.error('Error processing opportunities data:', parseError);
+      console.log('Using empty opportunities array due to processing error');
+      opportunities = [];
+    }
 
-      console.log(`Raw prices for ${opportunity.pair?.stablecoin_symbol}:`, {
-        stablecoin_price: rawStablecoinPrice,
-        fiat_rate: rawFiatRate,
-        estimated_profit: rawEstimatedProfit
-      });
-
-      return {
-        pair: {
-          stablecoin_symbol: opportunity.pair?.stablecoin_symbol || 'Unknown',
-          stablecoin_address: opportunity.pair?.stablecoin_address || '',
-          fiat_symbol: opportunity.pair?.fiat_symbol || 'Unknown'
-        },
-        stablecoin_price: normalizeOraclePrice(rawStablecoinPrice, 7),
-        fiat_rate: normalizeOraclePrice(rawFiatRate, 7),
-        deviation_bps: opportunity.deviation_bps || 0,
-        estimated_profit: normalizeOraclePrice(rawEstimatedProfit, 7),
-        trade_direction: opportunity.trade_direction || 'hold',
-        timestamp: opportunity.timestamp?.toString() || Date.now().toString()
-      };
-    });
-
-    console.log('=== FORMATTED OPPORTUNITIES OUTPUT ===')
-    console.log('Formatted opportunities count:', formattedOpportunities.length)
-    console.log('Formatted opportunities:', JSON.stringify(formattedOpportunities, null, 2))
+    console.log('Final opportunities count:', opportunities.length);
 
     return NextResponse.json({
       success: true,
       data: {
-        message: 'Basic opportunities scanned successfully!',
-        opportunities: formattedOpportunities,
-        count: formattedOpportunities.length,
-        timestamp: new Date().toISOString()
+        opportunities: opportunities,
+        count: opportunities.length,
+        timestamp: Date.now()
       }
     });
 
   } catch (error) {
-    console.error('Error scanning opportunities:', error);
+    console.error('Error scanning advanced opportunities:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to scan opportunities'
-    });
+    }, { status: 500 });
   }
 }
+
+
 
