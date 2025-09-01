@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../bindings/src'; 
 import { Networks } from '@stellar/stellar-sdk';
-import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset } from '@stellar/stellar-sdk';
+import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, scValToNative, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 
 // ✅ Helper to safely stringify objects with BigInt values
 const safeStringify = (obj: any) => {
@@ -473,34 +473,125 @@ function getTokenSymbolForOracle(tokenAddress: string): { symbol: string, name: 
   return tokenMap[tokenAddress] || { symbol: 'Unknown', name: 'Unknown Token' };
 }
 
-// Helper function to fetch USD price from oracle using x_last_price
+// Helper function to fetch USD price from oracle via arbitrage contract
 async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Promise<number> {
   try {
-    // Oracle addresses from the contract
-    const CRYPTO_ORACLE_TESTNET = "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63";
-    const FOREX_ORACLE_TESTNET = "CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W";
+    console.log(`Fetching oracle price for ${tokenSymbol} via arbitrage contract...`);
+
+    // Create arbitrage bot client to get oracle prices
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    // Get current opportunities which contain real oracle prices
+    const opportunities = await client.scan_advanced_opportunities({
+      simulate: true
+    });
+
+    console.log(`Got ${opportunities.result?.length || 0} opportunities from scan`);
+
+    // Parse opportunities to extract prices for the requested token
+    if (opportunities.result && Array.isArray(opportunities.result)) {
+      for (const opp of opportunities.result) {
+        if (opp.base_opportunity?.pair) {
+          const pair = opp.base_opportunity.pair;
+          
+          // Check if this opportunity has the token we're looking for
+          let priceData: { price: string, symbol: string } | null = null;
+          
+          if (pair.stablecoin_symbol === tokenSymbol) {
+            priceData = {
+              price: opp.base_opportunity.stablecoin_price.toString(),
+              symbol: tokenSymbol
+            };
+          } else if (pair.fiat_symbol === tokenSymbol || 
+                    (tokenSymbol === 'EURC' && pair.fiat_symbol === 'EUR')) {
+            priceData = {
+              price: opp.base_opportunity.fiat_rate.toString(),
+              symbol: tokenSymbol === 'EURC' ? 'EUR' : tokenSymbol
+            };
+          }
+          
+          if (priceData) {
+            const normalizedPrice = parseFloat(normalizeOraclePrice(priceData.price, 7));
+            console.log(`Found oracle price for ${tokenSymbol} from opportunities: $${normalizedPrice.toFixed(6)}`);
+            return normalizedPrice;
+          }
+        }
+      }
+    }
+
+    // If we didn't find the token in opportunities, use the oracle contract approach
+    console.log(`Token ${tokenSymbol} not found in current opportunities, attempting direct oracle calls...`);
     
-    // For now, use fallback prices until oracle integration is fully working
-    const prices: { [key: string]: number } = {
-      'XLM': 0.12, // Current approximate XLM price
-      'USDC': 1.0, // USDC is stable
-      'EURC': 1.08, // EUR/USD approximate rate
+    // Try to get a simple price using known mapping
+    const priceMapping: { [key: string]: number } = {
+      'XLM': await getXlmPriceFromMarket(),
+      'USDC': 1.0, // USDC is designed to be $1
+      'EURC': await getEurUsdRate(),
     };
     
-    console.log(`Using fallback price for ${tokenSymbol}: $${prices[tokenSymbol] || 0}`);
-    return prices[tokenSymbol] || 0;
+    if (priceMapping[tokenSymbol] !== undefined) {
+      console.log(`Using market-based price for ${tokenSymbol}: $${priceMapping[tokenSymbol]}`);
+      return priceMapping[tokenSymbol];
+    }
+
+    throw new Error(`Unable to fetch price for ${tokenSymbol}`);
 
   } catch (error) {
-    console.error(`Error fetching price for ${tokenSymbol}:`, error);
+    console.error(`Error fetching oracle price for ${tokenSymbol}:`, error);
     
-    // Fallback prices
+    // Fallback to hardcoded prices only after all attempts fail
+    console.log(`Using fallback price for ${tokenSymbol} due to oracle failure`);
     const fallbackPrices: { [key: string]: number } = {
-      'XLM': 0.12,
-      'USDC': 1.0,
-      'EURC': 1.08,
+      'XLM': 0.12,   // Fallback XLM price
+      'USDC': 1.0,   // USDC should be stable
+      'EURC': 1.08,  // EUR/USD approximate rate
     };
     
     return fallbackPrices[tokenSymbol] || 0;
+  }
+}
+
+// Helper to get XLM price from market data
+async function getXlmPriceFromMarket(): Promise<number> {
+  try {
+    // Call CoinGecko API for XLM price
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd');
+    const data = await response.json();
+    
+    if (data.stellar && data.stellar.usd) {
+      console.log(`Fetched XLM price from CoinGecko: $${data.stellar.usd}`);
+      return data.stellar.usd;
+    }
+    
+    throw new Error('Invalid response from CoinGecko');
+  } catch (error) {
+    console.error('Failed to fetch XLM price from CoinGecko:', error);
+    // Fallback to reasonable estimate
+    return 0.12;
+  }
+}
+
+// Helper to get EUR/USD rate
+async function getEurUsdRate(): Promise<number> {
+  try {
+    // Call a free forex API for EUR/USD rate
+    const response = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
+    const data = await response.json();
+    
+    if (data.rates && data.rates.USD) {
+      console.log(`Fetched EUR/USD rate from ExchangeRate API: ${data.rates.USD}`);
+      return data.rates.USD;
+    }
+    
+    throw new Error('Invalid response from ExchangeRate API');
+  } catch (error) {
+    console.error('Failed to fetch EUR/USD rate:', error);
+    // Fallback to reasonable estimate
+    return 1.08;
   }
 }
 

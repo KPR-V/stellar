@@ -1,6 +1,8 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { RefreshCw, Clock, TrendingUp, TrendingDown, ExternalLink, AlertCircle } from 'lucide-react'
+import useAdvancedOpportunities from '../../hooks/useAdvancedOpportunities'
+import AdvancedOpportunitiesModal from './advanced-opportunities-modal'
 
 interface VenueRecommendation {
   address: string
@@ -48,6 +50,9 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  
+  // Use the advanced opportunities hook
+  const { isModalOpen, selectedOpportunity, openModal, closeModal } = useAdvancedOpportunities()
 
   const fetchOpportunities = async () => {
     setIsLoading(true)
@@ -116,11 +121,24 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
   }
 
   const formatPrice = (price: string) => {
-    const numPrice = parseFloat(price)
+    // Convert from contract format (scaled by 10^7) to USD
+    const numPrice = parseFloat(price) / 1e7
     if (numPrice >= 1) {
-      return numPrice.toFixed(4)
+      return numPrice.toFixed(2)
     }
-    return numPrice.toFixed(6)
+    return numPrice.toFixed(4)
+  }
+
+  const formatLargeNumber = (value: string) => {
+    // Convert from contract format to readable USD format
+    const num = parseFloat(value) / 1e7
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(2) + 'M'
+    }
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'K'
+    }
+    return num.toFixed(2)
   }
 
   const getConfidenceColor = (score: number) => {
@@ -221,121 +239,95 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
         </div>
       )}
 
-      {/* Opportunities Table */}
+      {/* Opportunities Table - Search Modal Style */}
       {opportunities.length > 0 && (
-        <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-black/30 border-b border-white/10">
-                <tr>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Pair</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Direction</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Deviation</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Est. Profit</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Confidence</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Max Size</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Venues</th>
-                  <th className="text-left p-4 text-white/70 font-medium text-sm">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {opportunities.map((opportunity, index) => (
-                  <tr 
-                    key={index} 
-                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                  >
-                    {/* Pair */}
-                    <td className="p-4">
-                      <div className="text-white/90 font-medium text-sm">
-                        {opportunity.base_opportunity.pair.stablecoin_symbol}
-                      </div>
-                      <div className="text-white/50 text-xs">
-                        vs {opportunity.base_opportunity.pair.fiat_symbol}
-                      </div>
-                    </td>
+        <div>
 
-                    {/* Direction */}
-                    <td className="p-4">
-                      <div className={`flex items-center gap-2 ${
-                        opportunity.base_opportunity.trade_direction === 'BUY' 
-                          ? 'text-green-400' 
-                          : 'text-red-400'
-                      }`}>
-                        {opportunity.base_opportunity.trade_direction === 'BUY' 
-                          ? <TrendingUp size={14} /> 
-                          : <TrendingDown size={14} />
-                        }
-                        <span className="text-sm font-medium">
-                          {opportunity.base_opportunity.trade_direction}
-                        </span>
-                      </div>
-                    </td>
+          <div className="space-y-1">
+            {opportunities.map((opportunity, index) => (
+            <div
+              key={index}
+              onClick={() => openModal(opportunity)}
+              className="
+                flex items-center justify-between
+                p-3 
+                bg-black/10 
+                hover:bg-black/30 
+                border border-white/5 
+                hover:border-white/15 
+                rounded-lg 
+                transition-all 
+                duration-300
+                cursor-pointer
+                group
+                hover:scale-[1.02]
+                transform-gpu
+              "
+            >
+              {/* Pair */}
+              <div className="flex-1 min-w-0">
+                <div 
+                  className="cursor-help"
+                  title={`Stablecoin: $${formatPrice(opportunity.base_opportunity.stablecoin_price)} | Fiat Rate: $${formatPrice(opportunity.base_opportunity.fiat_rate)} | TWAP: $${opportunity.twap_price ? formatPrice(opportunity.twap_price) : 'N/A'} | Confidence: ${getConfidenceText(opportunity.confidence_score)} (${(opportunity.confidence_score / 100).toFixed(0)}%) | Max Size: $${formatLargeNumber(opportunity.max_trade_size)} | Venues: ${opportunity.venue_recommendations.map(v => v.name).join(', ')}`}
+                >
+                  <div className="text-white font-medium text-sm">
+                    {opportunity.base_opportunity.pair.stablecoin_symbol}
+                  </div>
+                  <div className="text-white/60 text-xs">
+                    vs {opportunity.base_opportunity.pair.fiat_symbol}
+                  </div>
+                </div>
+              </div>
 
-                    {/* Deviation */}
-                    <td className="p-4">
-                      <span className="text-white/90 text-sm font-mono">
-                        {formatDeviationBps(opportunity.base_opportunity.deviation_bps)}
-                      </span>
-                    </td>
+              {/* Direction */}
+              <div className="flex-1 min-w-0 ml-4">
+                <div className={`flex items-center gap-2 ${
+                  opportunity.base_opportunity.trade_direction === 'BUY' 
+                    ? 'text-green-400' 
+                    : 'text-red-400'
+                }`}>
+                  {opportunity.base_opportunity.trade_direction === 'BUY' 
+                    ? <TrendingUp size={14} /> 
+                    : <TrendingDown size={14} />
+                  }
+                  <span className="text-sm font-medium">
+                    {opportunity.base_opportunity.trade_direction}
+                  </span>
+                </div>
+              </div>
 
-                    {/* Estimated Profit */}
-                    <td className="p-4">
-                      <span className="text-green-400 text-sm font-mono">
-                        ${formatPrice(opportunity.base_opportunity.estimated_profit)}
-                      </span>
-                    </td>
+              {/* Deviation */}
+              <div className="flex-1 min-w-0 ml-4">
+                <div className="text-white/90 font-medium text-sm">
+                  {formatDeviationBps(opportunity.base_opportunity.deviation_bps)}
+                </div>
+                <div className="text-white/60 text-xs">
+                  Deviation
+                </div>
+              </div>
 
-                    {/* Confidence */}
-                    <td className="p-4">
-                      <div className={`${getConfidenceColor(opportunity.confidence_score)}`}>
-                        <span className="text-sm font-medium">
-                          {getConfidenceText(opportunity.confidence_score)}
-                        </span>
-                        <div className="text-xs opacity-70">
-                          {(opportunity.confidence_score / 100).toFixed(0)}%
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Max Trade Size */}
-                    <td className="p-4">
-                      <span className="text-white/70 text-sm font-mono">
-                        ${formatPrice(opportunity.max_trade_size)}
-                      </span>
-                    </td>
-
-                    {/* Venues */}
-                    <td className="p-4">
-                      <div className="space-y-1">
-                        {opportunity.venue_recommendations.slice(0, 2).map((venue, venueIndex) => (
-                          <div key={venueIndex} className="flex items-center gap-2 text-xs">
-                            <span className={`w-2 h-2 rounded-full ${
-                              venue.enabled ? 'bg-green-400' : 'bg-gray-500'
-                            }`} />
-                            <span className="text-white/60">{venue.name}</span>
-                          </div>
-                        ))}
-                        {opportunity.venue_recommendations.length > 2 && (
-                          <div className="text-xs text-white/40">
-                            +{opportunity.venue_recommendations.length - 2} more
-                          </div>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Time */}
-                    <td className="p-4">
-                      <span className="text-white/50 text-xs">
-                        {formatTimestamp(opportunity.base_opportunity.timestamp)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              {/* Estimated Profit */}
+              <div className="flex-1 min-w-0 ml-4 text-right">
+                <div className="text-green-400 font-medium text-sm">
+                  ${formatPrice(opportunity.base_opportunity.estimated_profit)}
+                </div>
+                <div className="text-white/60 text-xs">
+                  Est. profit
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
+    )}
+
+    {/* Advanced Opportunities Modal */}
+    <AdvancedOpportunitiesModal
+      isOpen={isModalOpen}
+      onClose={closeModal}
+      opportunity={selectedOpportunity}
+    />
+    
     </div>
   )
 }
