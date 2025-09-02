@@ -3,8 +3,33 @@ import { Client, networks, ProposalType } from '../../../daobindings/src'
 import { SorobanRpc, TransactionBuilder, scValToNative } from '@stellar/stellar-sdk'
 
 const RPC_URL = 'https://soroban-testnet.stellar.org'
-const DAO_CONTRACT = "CC5CA5FXTDWBEORPCRKYGHPPWWTYHGMVVOYJDLR23RFRX6PRXFGZBQJR"
+const DAO_CONTRACT = "CDOKJEKLQ2JJJYQYRXQJ2VX7VRK42NMKM3NXMLN7TYYSR6H2AEO5LU37"
 const NETWORK_PASSPHRASE = networks.testnet.networkPassphrase
+
+// ✅ Helper function to sanitize BigInt values for JSON serialization
+function sanitizeForJson(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  
+  if (typeof obj === 'bigint') {
+    return obj.toString();
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForJson);
+  }
+  
+  if (typeof obj === 'object') {
+    const sanitized: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      sanitized[key] = sanitizeForJson(value);
+    }
+    return sanitized;
+  }
+  
+  return obj;
+}
 
 // ✅ Helper function for proper ProposalType creation
 function createProposalType(typeString: string): ProposalType {
@@ -21,7 +46,7 @@ function createProposalType(typeString: string): ProposalType {
   return validTypes[typeString] || validTypes['UpdateConfig']
 }
 
-// ✅ Helper function to create proper proposal data based on type
+// ✅ FIXED: Helper function to create proper proposal data based on type
 function createProposalData(proposalType: string, customData?: any) {
   const baseData = {
     admin_address: undefined,
@@ -52,6 +77,7 @@ function createProposalData(proposalType: string, customData?: any) {
       return baseData
       
     case 'UpdateConfig':
+      // ✅ FIXED: Handle DAO config properly
       if (customData?.config_data) {
         return {
           ...baseData,
@@ -80,7 +106,6 @@ function createProposalData(proposalType: string, customData?: any) {
       
     case 'UpdateRiskManager':
     case 'EmergencyStop':
-      // These don't need specific data, just the proposal type is enough
       return baseData
       
     default:
@@ -243,9 +268,32 @@ async function getProposal(params: any): Promise<NextResponse> {
   }
 }
 
+// ✅ FIXED: Enhanced createProposal with proper validation and error handling
 async function createProposal(params: any): Promise<NextResponse> {
   const { proposer, title, description, proposal_type, proposal_data } = params
   try {
+    // ✅ Enhanced input validation
+    if (!title || title.trim().length === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Title is required and cannot be empty' 
+      })
+    }
+    
+    if (title.length > 100) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Title cannot exceed 100 characters' 
+      })
+    }
+    
+    if (description && description.length > 1000) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Description cannot exceed 1000 characters' 
+      })
+    }
+
     const client = new Client({
       contractId: DAO_CONTRACT,
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -259,35 +307,47 @@ async function createProposal(params: any): Promise<NextResponse> {
     console.log('Creating proposal with data:', {
       proposer,
       proposal_type: proposalType,
-      title,
-      description,
+      title: title.trim(),
+      description: (description || '').trim(),
       proposal_data: fullProposalData
     })
 
+    // ✅ First simulate to catch validation errors early
+    try {
+      const simulationTx = await client.create_proposal({
+        proposer,
+        proposal_type: proposalType,
+        title: title.trim(),
+        description: (description || '').trim(),
+        proposal_data: fullProposalData,
+      }, { simulate: true })
+      
+      console.log('✅ Simulation successful')
+    } catch (simError) {
+      console.error('❌ Simulation failed:', simError)
+      return NextResponse.json({ 
+        success: false, 
+        error: `Proposal validation failed: ${simError instanceof Error ? simError.message : 'Simulation error'}`
+      })
+    }
+
+    // ✅ Build transaction for signing
     const assembledTx = await client.create_proposal({
       proposer,
       proposal_type: proposalType,
-      title,
-      description,
+      title: title.trim(),
+      description: (description || '').trim(),
       proposal_data: fullProposalData,
     }, { simulate: false })
 
-    try {
-      const simulatedTx = await assembledTx.simulate()
-      const transactionXdr = simulatedTx.built?.toXDR() || assembledTx.built?.toXDR()
-      
-      if (!transactionXdr) {
-        throw new Error('Failed to build transaction XDR')
-      }
-
-      return NextResponse.json({ success: true, data: { transactionXdr } })
-    } catch (simulationError) {
-      console.error('Simulation failed:', simulationError)
-      return NextResponse.json({ 
-        success: false, 
-        error: `Proposal validation failed: ${simulationError instanceof Error ? simulationError.message : 'Unknown simulation error'}` 
-      })
+    const transactionXdr = assembledTx.built?.toXDR()
+    
+    if (!transactionXdr) {
+      throw new Error('Failed to build transaction XDR')
     }
+
+    return NextResponse.json({ success: true, data: { transactionXdr } })
+
   } catch (error) {
     console.error('Create proposal error:', error)
     return NextResponse.json({ 
@@ -502,16 +562,12 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     })
 
-    // WORKAROUND: Due to Stellar SDK bug #1153, getStakeInfo fails with Option<Map> decoding
-    // We simulate the transaction and manually decode the ScVal result
     const result = await client.get_stake_info({ user }, { simulate: true })
     
-    // Check if simulation is successful
     if (!result.simulation) {
       return NextResponse.json({ success: true, data: { stakeInfo: null } })
     }
     
-    // Type guard for successful simulation
     const sim = result.simulation as any
     if (!sim.result || !sim.result.retval) {
       return NextResponse.json({ success: true, data: { stakeInfo: null } })
@@ -519,33 +575,19 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
     
     const scVal = sim.result.retval
     
-    // Check if it's a None option (void)
     if (scVal.switch().name === 'scvVoid') {
       return NextResponse.json({ success: true, data: { stakeInfo: null } })
     }
     
-    // For Option<Map>, we need to check if it's an instance containing Some(Map)
-    // Let's try to use scValToNative but catch the specific error
     try {
       const nativeValue = scValToNative(scVal)
       if (nativeValue && typeof nativeValue === 'object') {
-        // Convert any BigInt values to strings/numbers for JSON serialization
-        const stakeInfo: any = {}
-        for (const [key, value] of Object.entries(nativeValue)) {
-          if (key === 'stake_start_time' || key === 'cooldown_start_time') {
-            stakeInfo[key] = typeof value === 'bigint' ? Number(value) : value
-          } else if (key === 'amount') {
-            stakeInfo[key] = typeof value === 'bigint' ? String(value) : String(value || '0')
-          } else {
-            stakeInfo[key] = value
-          }
-        }
+        const stakeInfo = sanitizeForJson(nativeValue)
         return NextResponse.json({ success: true, data: { stakeInfo } })
       }
     } catch (scValError) {
       console.log('scValToNative failed as expected for Option<Map>, attempting manual decode')
       
-      // Manual decoding for Option<Map> - check if it's a map directly
       if (scVal.switch().name === 'scvMap') {
         const map = scVal.map()
         const stakeInfo: any = {}
@@ -554,12 +596,11 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
           const key = scValToNative(entry.key())
           const value = scValToNative(entry.val())
           
-          if (key === 'stake_start_time' || key === 'cooldown_start_time') {
+          if (key === 'staked_at' || key === 'last_stake_update') {
             stakeInfo[key] = typeof value === 'bigint' ? Number(value) : (value || null)
           } else if (key === 'amount') {
             stakeInfo[key] = typeof value === 'bigint' ? String(value) : String(value || '0')
           } else if (typeof value === 'bigint') {
-            // Convert any other BigInt values to strings
             stakeInfo[key] = String(value)
           } else {
             stakeInfo[key] = value
@@ -570,7 +611,6 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
       }
     }
     
-    // If all else fails, return null
     return NextResponse.json({ success: true, data: { stakeInfo: null } })
     
   } catch (error) {
@@ -597,6 +637,7 @@ async function getTotalStaked(): Promise<NextResponse> {
   }
 }
 
+// ✅ FIXED: getDaoConfig with proper BigInt handling
 async function getDaoConfig(): Promise<NextResponse> {
   try {
     const client = new Client({
@@ -607,10 +648,12 @@ async function getDaoConfig(): Promise<NextResponse> {
 
     const result = await client.get_dao_config({ simulate: true })
     
+    const sanitizedConfig = sanitizeForJson(result.result)
+    
     return NextResponse.json({ 
       success: true, 
       data: { 
-        config: result.result,
+        config: sanitizedConfig,
         min_stake_to_propose: String(result.result?.min_stake_to_propose || '0'),
         voting_duration_ledgers: Number(result.result?.voting_duration_ledgers || 0),
         quorum_percentage: Number(result.result?.quorum_percentage || 0),
@@ -659,7 +702,7 @@ async function getUserVote(params: any): Promise<NextResponse> {
       proposal_id: BigInt(proposal_id) 
     }, { simulate: true })
     
-    const vote = result.result
+    const vote = sanitizeForJson(result.result)
     
     return NextResponse.json({ success: true, data: { vote } })
   } catch (error) {

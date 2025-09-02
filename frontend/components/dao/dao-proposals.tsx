@@ -39,26 +39,27 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
   const [form, setForm] = useState({
     title: '',
     description: '',
-    proposal_type: 'UpdateConfig' as string, // Keep as string for form handling
-    // Additional form fields for different proposal types
+    proposal_type: 'UpdateConfig' as string,
+    // DAO Config fields for UpdateConfig proposals
+    dao_config_data: {
+      min_stake_to_propose: '',
+      voting_duration_ledgers: '',
+      quorum_percentage: '',
+      execution_delay: '',
+      proposal_threshold_bps: '',
+    },
+    // Trading pair fields
     trading_pair_data: {
       stablecoin_symbol: '',
       stablecoin_address: '',
       target_peg: '',
     },
+    // Venue fields
     venue_data: {
       name: '',
       address: '',
       fee_bps: '',
       liquidity_threshold: '',
-    },
-    config_data: {
-      min_profit_bps: '',
-      max_trade_size: '',
-      min_liquidity: '',
-      slippage_tolerance_bps: '',
-      max_gas_price: '',
-      enabled: true,
     },
     admin_address: '',
     symbol_data: '',
@@ -117,7 +118,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     setLoading(true)
     setError(null)
     try {
-      // Fetch both active and all proposals
       const [activeRes, allRes] = await Promise.all([
         fetch('/api/dao', {
           method: 'POST',
@@ -373,7 +373,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       }
 
       const signResult = await walletKit.signTransaction(data.data.transactionXdr, {
-        ///@ts-ignore
+        // @ts-ignore
         address,
         networkPassphrase: WalletNetwork.TESTNET,
       })
@@ -540,30 +540,29 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           return
         }
         
-        // Create proper EnhancedStablecoinPair structure
         proposalData = {
           pair_data: {
             base: {
               stablecoin_symbol: form.trading_pair_data.stablecoin_symbol,
               stablecoin_address: form.trading_pair_data.stablecoin_address,
               target_peg: form.trading_pair_data.target_peg ? 
-                String(Number(form.trading_pair_data.target_peg) * 1000000) : // Convert to string for JSON
-                "1000000", // Default $1.00 as string
+                String(Number(form.trading_pair_data.target_peg) * 1000000) :
+                "1000000",
               fiat_symbol: 'USD',
-              deviation_threshold_bps: 100, // 1%
+              deviation_threshold_bps: 100,
             },
             enabled: true,
             fee_config: {
-              trading_fee_bps: 10,   // 0.1%
-              keeper_fee_bps: 5,     // 0.05%
-              gas_fee_bps: 3,        // 0.03%
-              bridge_fee_bps: 2,     // 0.02%
+              trading_fee_bps: 10,
+              keeper_fee_bps: 5,
+              gas_fee_bps: 3,
+              bridge_fee_bps: 2,
             },
             risk_config: {
-              max_position_size: String(1000000 * 1000000), // Convert to string for JSON
-              max_daily_volume: String(10000000 * 1000000),  // Convert to string for JSON
-              volatility_threshold_bps: 500, // 5%
-              correlation_limit: String(800000), // 0.8 in 6 decimals as string
+              max_position_size: String(1000000 * 1000000),
+              max_daily_volume: String(10000000 * 1000000),
+              volatility_threshold_bps: 500,
+              correlation_limit: String(800000),
             },
             price_sources: {
               min_sources_required: 1,
@@ -574,7 +573,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
             twap_config: {
               enabled: false,
               periods: 5,
-              min_deviation_bps: 50, // 0.5%
+              min_deviation_bps: 50,
             }
           }
         }
@@ -592,8 +591,8 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
             address: form.venue_data.address,
             fee_bps: form.venue_data.fee_bps ? Number(form.venue_data.fee_bps) : 30,
             liquidity_threshold: form.venue_data.liquidity_threshold ? 
-              String(Number(form.venue_data.liquidity_threshold) * 1000000) : // Convert to string for JSON
-              String(1000000 * 1000000), // 1M tokens default as string
+              String(Number(form.venue_data.liquidity_threshold) * 1000000) :
+              String(1000000 * 1000000),
             enabled: true,
           }
         }
@@ -605,7 +604,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           return
         }
         
-        // Validate Stellar address format (basic check)
         if (form.admin_address.length !== 56 || !form.admin_address.match(/^G[A-Z0-9]{55}$/)) {
           setError('Please enter a valid Stellar address (56 characters starting with G)')
           return
@@ -628,30 +626,35 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         break
         
       case 'UpdateConfig':
-        // For config updates, use the values from the form or defaults
+        // ✅ FIXED: For DAO config updates, create proper DAOConfig structure
+        if (!daoConfig) {
+          setError('DAO config not loaded')
+          return
+        }
+        
         proposalData = {
           config_data: {
-            enabled: form.config_data.enabled,
-            min_profit_bps: form.config_data.min_profit_bps ? 
-              Number(form.config_data.min_profit_bps) : 50,         // 0.5%
-            max_trade_size: form.config_data.max_trade_size ? 
-              String(Number(form.config_data.max_trade_size) * 1000000) : // Convert to string with decimals
-              String(10000 * 1000000), // 10K tokens
-            min_liquidity: form.config_data.min_liquidity ? 
-              String(Number(form.config_data.min_liquidity) * 1000000) :   // Convert to string with decimals
-              String(1000 * 1000000),   // 1K tokens
-            slippage_tolerance_bps: form.config_data.slippage_tolerance_bps ? 
-              Number(form.config_data.slippage_tolerance_bps) : 100, // 1%
-            max_gas_price: form.config_data.max_gas_price ? 
-              String(Number(form.config_data.max_gas_price) * 1000000) :    // Convert to string with decimals
-              String(100 * 1000000),    // 100 XLM
+            min_stake_to_propose: form.dao_config_data.min_stake_to_propose ? 
+              String(Number(form.dao_config_data.min_stake_to_propose) * 10000000) :
+              String(daoConfig.min_stake_to_propose),
+            voting_duration_ledgers: form.dao_config_data.voting_duration_ledgers ? 
+              Number(form.dao_config_data.voting_duration_ledgers) :
+              Number(daoConfig.voting_duration_ledgers),
+            quorum_percentage: form.dao_config_data.quorum_percentage ? 
+              Number(form.dao_config_data.quorum_percentage) :
+              Number(daoConfig.quorum_percentage),
+            execution_delay: form.dao_config_data.execution_delay ? 
+              Number(form.dao_config_data.execution_delay) :
+              Number(daoConfig.execution_delay),
+            proposal_threshold_bps: form.dao_config_data.proposal_threshold_bps ? 
+              Number(form.dao_config_data.proposal_threshold_bps) :
+              Number(daoConfig.proposal_threshold_bps || 0),
           }
         }
         break
         
       case 'UpdateRiskManager':
       case 'EmergencyStop':
-        // These don't need specific data, the proposal type is sufficient
         proposalData = {}
         break
         
@@ -709,6 +712,13 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         title: '', 
         description: '', 
         proposal_type: 'UpdateConfig',
+        dao_config_data: {
+          min_stake_to_propose: '',
+          voting_duration_ledgers: '',
+          quorum_percentage: '',
+          execution_delay: '',
+          proposal_threshold_bps: '',
+        },
         trading_pair_data: {
           stablecoin_symbol: '',
           stablecoin_address: '',
@@ -719,14 +729,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           address: '',
           fee_bps: '',
           liquidity_threshold: '',
-        },
-        config_data: {
-          min_profit_bps: '',
-          max_trade_size: '',
-          min_liquidity: '',
-          slippage_tolerance_bps: '',
-          max_gas_price: '',
-          enabled: true,
         },
         admin_address: '',
         symbol_data: '',
@@ -867,7 +869,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 disabled={creating}
                 className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
               >
-                <option value="UpdateConfig">Update Config</option>
+                <option value="UpdateConfig">Update DAO Config</option>
                 <option value="AddTradingPair">Add Trading Pair</option>
                 <option value="AddTradingVenue">Add Trading Venue</option>
                 <option value="PausePair">Pause Pair</option>
@@ -878,6 +880,106 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
             </div>
 
             {/* Conditional Fields Based on Proposal Type */}
+            {form.proposal_type === 'UpdateConfig' && (
+              <div className="space-y-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <h5 className="text-blue-300 text-sm font-medium">⚙️ DAO Configuration Update</h5>
+                <div className="text-xs text-blue-200/80 mb-2">
+                  Update the DAO's governance parameters. Leave fields empty to keep current values.
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Min Stake to Propose (KALE)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.dao_config_data.min_stake_to_propose}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        dao_config_data: { ...f.dao_config_data, min_stake_to_propose: e.target.value }
+                      }))}
+                      placeholder={`Current: ${formatStakeAmount(daoConfig?.min_stake_to_propose || '0')} KALE`}
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Voting Duration (ledgers)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={form.dao_config_data.voting_duration_ledgers}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        dao_config_data: { ...f.dao_config_data, voting_duration_ledgers: e.target.value }
+                      }))}
+                      placeholder={`Current: ${daoConfig?.voting_duration_ledgers || 0}`}
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Quorum Percentage (%)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={form.dao_config_data.quorum_percentage}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        dao_config_data: { ...f.dao_config_data, quorum_percentage: e.target.value }
+                      }))}
+                      placeholder={`Current: ${daoConfig?.quorum_percentage || 0}%`}
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Execution Delay (seconds)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.dao_config_data.execution_delay}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        dao_config_data: { ...f.dao_config_data, execution_delay: e.target.value }
+                      }))}
+                      placeholder={`Current: ${daoConfig?.execution_delay || 0}s`}
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Proposal Threshold (basis points)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="10000"
+                      value={form.dao_config_data.proposal_threshold_bps}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        dao_config_data: { ...f.dao_config_data, proposal_threshold_bps: e.target.value }
+                      }))}
+                      placeholder={`Current: ${daoConfig?.proposal_threshold_bps || 0} bps`}
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+                
+                <div className="text-xs text-white/60 space-y-1 pt-2 border-t border-blue-500/20">
+                  <div className="font-medium">⚠️ Note:</div>
+                  <div>This updates DAO governance parameters like minimum stake, voting duration, etc.</div>
+                  <div>To change the minimum stake requirement, enter the new amount in KALE.</div>
+                </div>
+              </div>
+            )}
+
             {form.proposal_type === 'AddTradingPair' && (
               <div className="space-y-3 p-3 bg-white/5 rounded-lg">
                 <h5 className="text-white/80 text-sm font-medium">Trading Pair Details</h5>
@@ -1007,138 +1109,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                   disabled={creating}
                   className="w-full bg-black/30 border border-yellow-500/30 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-yellow-500/50 disabled:opacity-50"
                 />
-              </div>
-            )}
-
-            {form.proposal_type === 'UpdateConfig' && (
-              <div className="space-y-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                <h5 className="text-blue-300 text-sm font-medium">⚙️ Configuration Update</h5>
-                <div className="text-xs text-blue-200/80 mb-2">
-                  Update the arbitrage bot's global configuration parameters. Leave fields empty to use current values.
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Min Profit (basis points)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="10000"
-                      value={form.config_data.min_profit_bps}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        config_data: { ...f.config_data, min_profit_bps: e.target.value }
-                      }))}
-                      placeholder="e.g., 50 (0.5%)"
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Max Trade Size (tokens)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.config_data.max_trade_size}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        config_data: { ...f.config_data, max_trade_size: e.target.value }
-                      }))}
-                      placeholder="e.g., 10000"
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Min Liquidity (tokens)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.config_data.min_liquidity}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        config_data: { ...f.config_data, min_liquidity: e.target.value }
-                      }))}
-                      placeholder="e.g., 1000"
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Slippage Tolerance (bps)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="10000"
-                      value={form.config_data.slippage_tolerance_bps}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        config_data: { ...f.config_data, slippage_tolerance_bps: e.target.value }
-                      }))}
-                      placeholder="e.g., 100 (1%)"
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Max Gas Price (XLM)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={form.config_data.max_gas_price}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        config_data: { ...f.config_data, max_gas_price: e.target.value }
-                      }))}
-                      placeholder="e.g., 100"
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <label className="flex items-center gap-2 text-xs text-white/70">
-                      <input
-                        type="checkbox"
-                        checked={form.config_data.enabled}
-                        onChange={e => setForm(f => ({ 
-                          ...f, 
-                          config_data: { ...f.config_data, enabled: e.target.checked }
-                        }))}
-                        disabled={creating}
-                        className="w-4 h-4 rounded border-blue-500/30 bg-black/30 text-blue-500 focus:ring-blue-500/50 disabled:opacity-50"
-                      />
-                      Enable Arbitrage Bot
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="text-xs text-white/60 space-y-1 pt-2 border-t border-blue-500/20">
-                  <div className="font-medium">Current Default Values:</div>
-                  <div>• Min Profit: 50 bps (0.5%) • Max Trade: 10K tokens • Min Liquidity: 1K tokens</div>
-                  <div>• Slippage: 100 bps (1%) • Max Gas: 100 XLM • Status: Enabled</div>
-                </div>
-              </div>
-            )}
-
-            {form.proposal_type === 'UpdateConfig' && (
-              <div className="space-y-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                <h5 className="text-blue-300 text-sm font-medium">⚙️ Configuration Update</h5>
-                <div className="text-xs text-blue-200/80 mb-2">
-                  Update the arbitrage bot's global configuration parameters. Default values will be used.
-                </div>
-                <div className="text-xs text-white/60 space-y-1">
-                  <div>• Min Profit: 0.5% (50 bps)</div>
-                  <div>• Max Trade Size: 10,000 tokens</div>
-                  <div>• Min Liquidity: 1,000 tokens</div>
-                  <div>• Slippage Tolerance: 1% (100 bps)</div>
-                  <div>• Max Gas Price: 100 XLM</div>
-                </div>
               </div>
             )}
 

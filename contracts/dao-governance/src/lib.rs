@@ -1,7 +1,7 @@
 #![no_std]
 #![allow(dead_code)]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, String, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, String, Symbol, Vec,BytesN};
 
 use shared_types::{
     ArbitrageConfig, 
@@ -780,6 +780,55 @@ impl DAOGovernance {
             panic!("Unauthorized: caller is not admin");
         }
     }
+
+    pub fn upgrade_contract(env: Env, admin: Address, new_wasm_hash: BytesN<32>) {
+        admin.require_auth();
+        Self::require_admin(&env, &admin);
+        
+        
+        let wasm_hash_clone = new_wasm_hash.clone();
+        
+        
+        env.deployer().update_current_contract_wasm(wasm_hash_clone);
+        
+        
+        env.events().publish(
+            (Symbol::new(&env, "contract"), Symbol::new(&env, "upgraded")),
+            (admin, new_wasm_hash),
+        );
+    }
+    
+    pub fn get_version(_env: Env) -> u32 {
+        2  
+    }
+    
+    
+    pub fn update_min_stake_admin(env: Env, admin: Address, new_min_stake: i128) {
+        admin.require_auth();
+        Self::require_admin(&env, &admin);
+        
+        let mut config: DAOConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "dao_config"))
+            .unwrap();
+        
+        let old_min_stake = config.min_stake_to_propose;
+        config.min_stake_to_propose = new_min_stake;
+        
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "dao_config"), &config);
+            
+        env.events().publish(
+            (Symbol::new(&env, "min_stake"), Symbol::new(&env, "updated")),
+            (old_min_stake, new_min_stake, admin),
+        );
+    }
+    
+    
+
+
 }
 
 

@@ -7,7 +7,7 @@ pub mod reflector;
 pub mod utils;
 pub use shared_types::*;
 pub use dex::{
-    StellarDEXClient,          // ✅ Now properly available
+    StellarDEXClient as StellarDEXStruct,          // ✅ Now properly available
     SwapResult, 
     simulate_trade,
     calculate_slippage_bps, 
@@ -23,6 +23,17 @@ pub use utils::*;
 pub trait RiskManagerContract {
     fn check_trade_risk(env: Env, trade_size: i128) -> Symbol;
     fn update_daily_volume(env: Env, caller: Address, volume_delta: i128);
+}
+#[soroban_sdk::contractclient(name = "StellarDEXClient")]
+pub trait StellarDEXContract {
+    fn swap_exact_tokens_for_tokens(
+        env: Env,
+        amount_in: i128,
+        amount_out_min: i128,
+        path: Vec<Address>,
+        to: Address,
+        deadline: u64,
+    ) -> Vec<i128>;
 }
 
 
@@ -228,68 +239,88 @@ impl ArbitrageBot {
         venue_address: Address,      
     ) -> TradeExecution {
         user.require_auth();
-
+    
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
             .storage()
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-
+    
         if !profile.is_active {
             return Self::create_failed_execution(&env, &opportunity, "USER_INACTIVE");
         }
-
+    
         if trade_amount > profile.risk_limits.max_position_size {
             return Self::create_failed_execution(&env, &opportunity, "USER_POSITION_TOO_LARGE");
         }
-
+    
+        // ✅ Check internal contract balance (not user wallet)
         let token = &opportunity.base_opportunity.pair.stablecoin_address;
         let user_balance = profile.balances.get(token.clone()).unwrap_or(0);
         if user_balance < trade_amount {
             return Self::create_failed_execution(&env, &opportunity, "INSUFFICIENT_USER_BALANCE");
         }
-
+    
         let history_key = UserStorageKey::TradeHistory(user.clone());
         let history: UserTradeHistory = env.storage().persistent().get(&history_key).unwrap();
-
+    
         if history.daily_volume + trade_amount > profile.risk_limits.max_daily_volume {
             return Self::create_failed_execution(&env, &opportunity, "USER_DAILY_LIMIT_EXCEEDED");
         }
-
+    
         if !profile.trading_config.enabled {
             return Self::create_failed_execution(&env, &opportunity, "USER_BOT_DISABLED");
         }
-
+    
+        // ✅ Deduct from internal balance BEFORE trade
+        profile.balances.set(token.clone(), user_balance - trade_amount);
+        env.storage().persistent().set(&profile_key, &profile);
+    
         let simulation_result =
             Self::simulate_arbitrage_trade(&env, &opportunity, trade_amount, &venue_address);
-
+    
         if let Some(sim) = simulation_result {
             let slippage_bps = calculate_slippage_bps(
                 opportunity.base_opportunity.estimated_profit,
                 sim.amount_out - trade_amount,
             );
-
+    
             if slippage_bps > profile.trading_config.slippage_tolerance_bps {
+                // ✅ Refund on failed slippage check
+                let refund_balance = profile.balances.get(token.clone()).unwrap_or(0) + trade_amount;
+                profile.balances.set(token.clone(), refund_balance);
+                env.storage().persistent().set(&profile_key, &profile);
                 return Self::create_failed_execution(&env, &opportunity, "USER_SLIPPAGE_TOO_HIGH");
             }
         }
-
-        let execution =
-            Self::execute_trade_for_user(&env, &user, &opportunity, trade_amount, &venue_address);
-
+    
+        // ✅ Execute trade using contract's funds
+        let execution = Self::execute_contract_trade(
+            &env, 
+            &user, 
+            &opportunity, 
+            trade_amount, 
+            &venue_address
+        );
+    
+        // ✅ Update balance based on trade result
         if execution.status == Symbol::new(&env, "SUCCESS") {
-            let new_balance = user_balance - trade_amount + execution.actual_profit;
-            profile.balances.set(token.clone(), new_balance);
+            let final_balance = profile.balances.get(token.clone()).unwrap_or(0) + execution.actual_profit;
+            profile.balances.set(token.clone(), final_balance);
             profile.total_profit_loss += execution.actual_profit;
+        } else {
+            // ✅ Refund on failed trade
+            let refund_balance = profile.balances.get(token.clone()).unwrap_or(0) + trade_amount;
+            profile.balances.set(token.clone(), refund_balance);
         }
-
+    
         env.storage().persistent().set(&profile_key, &profile);
-
         Self::update_user_trade_history(&env, &user, &execution);
-
+    
         execution
     }
+    
 
   
     pub fn get_user_performance_metrics(env: Env, user: Address, days: u32) -> PerformanceMetrics {
@@ -788,45 +819,9 @@ impl ArbitrageBot {
         trade_amount: i128,
         venue_address: &Address,
     ) -> TradeExecution {
-        let dex_client = StellarDEXClient::new(env, venue_address);
-        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
-        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
-
-        let deadline = env.ledger().timestamp() + 300;
-
-        let swap_result = dex_client.swap(
-            env.clone(),                        // Parameter 1: Env
-            &env.current_contract_address(),    // Parameter 2: caller
-            token_in,                           // Parameter 3: token_in
-            token_out,                          // Parameter 4: token_out
-            &trade_amount,                      // Parameter 5: amount_in
-            &0i128,                             // Parameter 6: min_amount_out
-            &deadline,                          // Parameter 7: deadline
-        );
-
-        let gas_cost = estimate_gas_cost(env, 3);
-        let net_profit = swap_result.amount_out - trade_amount - gas_cost;
-
-        let execution = TradeExecution {
-            opportunity: opportunity.base_opportunity.clone(),
-            executed_amount: trade_amount,
-            actual_profit: net_profit,
-            gas_cost,
-            execution_timestamp: env.ledger().timestamp(),
-            status: if swap_result.success {
-                Symbol::new(env, "SUCCESS")
-            } else {
-                Symbol::new(env, "FAILED")
-            },
-        };
-
-        env.events().publish(
-            (Symbol::new(env, "user_trade"), Symbol::new(env, "executed")),
-            (user.clone(), execution.clone()),
-        );
-
-        execution
+        Self::execute_contract_trade(env, user, opportunity, trade_amount, venue_address)
     }
+    
 
    
     fn update_user_trade_history(env: &Env, user: &Address, execution: &TradeExecution) {
@@ -1077,7 +1072,7 @@ impl ArbitrageBot {
         env: &Env,
         opportunity: &EnhancedArbitrageOpportunity,
         trade_amount: i128,
-        _venue_address: &Address, // ✅ Fixed unused variable warning
+        _venue_address: &Address,
     ) -> TradeExecution {
         let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
         let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
@@ -1092,7 +1087,6 @@ impl ArbitrageBot {
 
         let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
 
-        // ✅ FIXED: Use corrected function
         match crate::dex::execute_real_swap(
             env,
             token_in,
@@ -1313,6 +1307,63 @@ impl ArbitrageBot {
             period_days,
         }
     }
+
+    fn execute_contract_trade(
+        env: &Env,
+        user: &Address,
+        opportunity: &EnhancedArbitrageOpportunity,
+        trade_amount: i128,
+        venue_address: &Address,
+    ) -> TradeExecution {
+        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
+        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+        
+        let deadline = env.ledger().timestamp() + 300;
+        
+        let config: ArbitrageConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "config"))
+            .unwrap();
+        
+        let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
+        let dex_client = StellarDEXClient::new(env, venue_address);
+        
+        let path = Vec::from_array(env, [token_in.clone(), token_out.clone()]);
+        
+        
+        let amounts = dex_client.swap_exact_tokens_for_tokens(
+            &trade_amount,
+            &min_amount_out,
+            &path,
+            &env.current_contract_address(),
+            &deadline,
+        );
+        
+        let amount_out = amounts.get(1).unwrap_or(0);
+        let gas_cost = estimate_gas_cost(env, 3);
+        let net_profit = amount_out - trade_amount - gas_cost;
+    
+        let execution = TradeExecution {
+            opportunity: opportunity.base_opportunity.clone(),
+            executed_amount: trade_amount,
+            actual_profit: net_profit,
+            gas_cost,
+            execution_timestamp: env.ledger().timestamp(),
+            status: Symbol::new(env, "SUCCESS"),
+        };
+    
+        env.events().publish(
+            (Symbol::new(env, "user_trade"), Symbol::new(env, "executed")),
+            (user.clone(), execution.clone()),
+        );
+    
+        execution
+    }
+    
+    
+
+
 }
 
 
