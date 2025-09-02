@@ -7,7 +7,7 @@ export * as rpc from '@stellar/stellar-sdk/rpc';
 export declare const networks: {
     readonly testnet: {
         readonly networkPassphrase: "Test SDF Network ; September 2015";
-        readonly contractId: "CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3";
+        readonly contractId: "CC5CA5FXTDWBEORPCRKYGHPPWWTYHGMVVOYJDLR23RFRX6PRXFGZBQJR";
     };
 };
 export type ProposalType = {
@@ -235,7 +235,6 @@ export interface TradingVenue {
 export interface Client {
     /**
      * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Initialize the DAO with comprehensive parameters
      */
     initialize: ({ admin, arbitrage_bot_address, dao_config }: {
         admin: string;
@@ -257,7 +256,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a stake_kale transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Stake KALE tokens to gain voting power
      */
     stake_kale: ({ staker, amount }: {
         staker: string;
@@ -278,7 +276,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a unstake_kale transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Unstake KALE tokens (with cooldown period)
      */
     unstake_kale: ({ staker, amount }: {
         staker: string;
@@ -299,7 +296,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a create_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Create a new governance proposal with structured data
      */
     create_proposal: ({ proposer, proposal_type, title, description, proposal_data }: {
         proposer: string;
@@ -323,7 +319,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<u64>>;
     /**
      * Construct and simulate a cancel_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Cancel a proposal (only by proposer before voting ends)
      */
     cancel_proposal: ({ proposer, proposal_id }: {
         proposer: string;
@@ -344,7 +339,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a vote transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Vote on a proposal
      */
     vote: ({ voter, proposal_id, vote_yes }: {
         voter: string;
@@ -366,7 +360,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a finalize_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Finalize voting and determine proposal outcome
      */
     finalize_proposal: ({ proposal_id }: {
         proposal_id: u64;
@@ -386,7 +379,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a execute_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Execute a passed proposal (after timelock)
      */
     execute_proposal: ({ executor, proposal_id }: {
         executor: string;
@@ -407,7 +399,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a get_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get proposal details
      */
     get_proposal: ({ proposal_id }: {
         proposal_id: u64;
@@ -427,7 +418,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Proposal>>;
     /**
      * Construct and simulate a get_all_proposals transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get all proposals
      */
     get_all_proposals: (options?: {
         /**
@@ -445,7 +435,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Array<Proposal>>>;
     /**
      * Construct and simulate a get_active_proposals transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get active proposals only
      */
     get_active_proposals: (options?: {
         /**
@@ -463,7 +452,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Array<Proposal>>>;
     /**
      * Construct and simulate a get_stake transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get user's staked amount
      */
     get_stake: ({ user }: {
         user: string;
@@ -483,7 +471,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<i128>>;
     /**
      * Construct and simulate a get_stake_info transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get user's stake info
      */
     get_stake_info: ({ user }: {
         user: string;
@@ -503,7 +490,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Option<StakeInfo>>>;
     /**
      * Construct and simulate a get_total_staked transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get total staked KALE
      */
     get_total_staked: (options?: {
         /**
@@ -521,7 +507,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<i128>>;
     /**
      * Construct and simulate a get_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get admin address
      */
     get_admin: (options?: {
         /**
@@ -539,7 +524,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<string>>;
     /**
      * Construct and simulate a get_dao_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get DAO configuration
      */
     get_dao_config: (options?: {
         /**
@@ -557,7 +541,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<DAOConfig>>;
     /**
      * Construct and simulate a get_user_vote transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get user's vote on a proposal
      */
     get_user_vote: ({ user, proposal_id }: {
         user: string;

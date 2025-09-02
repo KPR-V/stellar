@@ -4,7 +4,7 @@ import { Menu, X } from 'lucide-react'
 import SearchBar from './search-bar'
 import StellarConnect from '../../app/stellar-connect'
 import ProfileModal from '../Profile/profile-modal'
-
+import Link from 'next/link'
 const NavBarPage = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -66,7 +66,10 @@ const NavBarPage = () => {
             {/* DAO Button */}
             <button className="relative bg-transparent text-white font-medium text-xs lg:text-sm px-2 lg:px-3 py-2 transition-all duration-300 ease-out group whitespace-nowrap">
               <span className="relative">
+                <Link href="/dao">
                 DAO
+                
+                </Link>
                 <div className="absolute -bottom-1 left-0 right-0 h-[1px] w-0 bg-white/60 transition-all duration-300 ease-out group-hover:w-full"></div>
               </span>
             </button>

@@ -7,6 +7,12 @@ import StakeModal from '../../components/dao/stake-modal'
 
 const Page = () => {
   const [isStakeOpen, setIsStakeOpen] = React.useState(false)
+  const [refreshKey, setRefreshKey] = React.useState(0)
+
+  const handleStakeUpdate = () => {
+    // Trigger refresh of DAO proposals component
+    setRefreshKey(prev => prev + 1)
+  }
 
   return (
     <div className="relative min-h-screen w-full">
@@ -28,11 +34,18 @@ const Page = () => {
             </div>
           </div>
 
-          <DaoProposals onRequireStake={() => setIsStakeOpen(true)} />
+          <DaoProposals 
+            key={refreshKey} 
+            onRequireStake={() => setIsStakeOpen(true)} 
+          />
         </main>
       </div>
 
-      <StakeModal isOpen={isStakeOpen} onClose={() => setIsStakeOpen(false)} />
+      <StakeModal 
+        isOpen={isStakeOpen} 
+        onClose={() => setIsStakeOpen(false)}
+        onStakeUpdate={handleStakeUpdate}
+      />
     </div>
   )
 }

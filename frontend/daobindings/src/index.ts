@@ -25,6 +25,14 @@ export * from '@stellar/stellar-sdk'
 export * as contract from '@stellar/stellar-sdk/contract'
 export * as rpc from '@stellar/stellar-sdk/rpc'
 
+// Re-export contract client types for easier usage
+export {
+  AssembledTransaction,
+  Client as ContractClient,
+  type ClientOptions as ContractClientOptions,
+  type MethodOptions
+} from '@stellar/stellar-sdk/contract';
+
 if (typeof window !== 'undefined') {
   //@ts-ignore Buffer exists
   window.Buffer = window.Buffer || Buffer;
@@ -34,7 +42,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
   testnet: {
     networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3",
+    contractId: "CC5CA5FXTDWBEORPCRKYGHPPWWTYHGMVVOYJDLR23RFRX6PRXFGZBQJR",
   }
 } as const
 
@@ -250,7 +258,6 @@ export interface TradingVenue {
 export interface Client {
   /**
    * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Initialize the DAO with comprehensive parameters
    */
   initialize: ({admin, arbitrage_bot_address, dao_config}: {admin: string, arbitrage_bot_address: string, dao_config: DAOConfig}, options?: {
     /**
@@ -271,7 +278,6 @@ export interface Client {
 
   /**
    * Construct and simulate a stake_kale transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Stake KALE tokens to gain voting power
    */
   stake_kale: ({staker, amount}: {staker: string, amount: i128}, options?: {
     /**
@@ -292,7 +298,6 @@ export interface Client {
 
   /**
    * Construct and simulate a unstake_kale transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Unstake KALE tokens (with cooldown period)
    */
   unstake_kale: ({staker, amount}: {staker: string, amount: i128}, options?: {
     /**
@@ -313,7 +318,6 @@ export interface Client {
 
   /**
    * Construct and simulate a create_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Create a new governance proposal with structured data
    */
   create_proposal: ({proposer, proposal_type, title, description, proposal_data}: {proposer: string, proposal_type: ProposalType, title: string, description: string, proposal_data: ProposalData}, options?: {
     /**
@@ -334,7 +338,6 @@ export interface Client {
 
   /**
    * Construct and simulate a cancel_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Cancel a proposal (only by proposer before voting ends)
    */
   cancel_proposal: ({proposer, proposal_id}: {proposer: string, proposal_id: u64}, options?: {
     /**
@@ -355,7 +358,6 @@ export interface Client {
 
   /**
    * Construct and simulate a vote transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Vote on a proposal
    */
   vote: ({voter, proposal_id, vote_yes}: {voter: string, proposal_id: u64, vote_yes: boolean}, options?: {
     /**
@@ -376,7 +378,6 @@ export interface Client {
 
   /**
    * Construct and simulate a finalize_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Finalize voting and determine proposal outcome
    */
   finalize_proposal: ({proposal_id}: {proposal_id: u64}, options?: {
     /**
@@ -397,7 +398,6 @@ export interface Client {
 
   /**
    * Construct and simulate a execute_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Execute a passed proposal (after timelock)
    */
   execute_proposal: ({executor, proposal_id}: {executor: string, proposal_id: u64}, options?: {
     /**
@@ -418,7 +418,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get proposal details
    */
   get_proposal: ({proposal_id}: {proposal_id: u64}, options?: {
     /**
@@ -439,7 +438,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_all_proposals transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get all proposals
    */
   get_all_proposals: (options?: {
     /**
@@ -460,7 +458,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_active_proposals transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get active proposals only
    */
   get_active_proposals: (options?: {
     /**
@@ -481,7 +478,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_stake transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get user's staked amount
    */
   get_stake: ({user}: {user: string}, options?: {
     /**
@@ -502,7 +498,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_stake_info transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get user's stake info
    */
   get_stake_info: ({user}: {user: string}, options?: {
     /**
@@ -523,7 +518,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_total_staked transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get total staked KALE
    */
   get_total_staked: (options?: {
     /**
@@ -544,7 +538,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get admin address
    */
   get_admin: (options?: {
     /**
@@ -565,7 +558,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_dao_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get DAO configuration
    */
   get_dao_config: (options?: {
     /**
@@ -586,7 +578,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_vote transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get user's vote on a proposal
    */
   get_user_vote: ({user, proposal_id}: {user: string, proposal_id: u64}, options?: {
     /**
@@ -630,23 +621,23 @@ export class Client extends ContractClient {
         "AAAAAQAAAAAAAAAAAAAABFZvdGUAAAAFAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAAAAAAl0aW1lc3RhbXAAAAAAAAAGAAAAAAAAAAh2b3RlX3llcwAAAAEAAAAAAAAABXZvdGVyAAAAAAAAEwAAAAAAAAAMdm90aW5nX3Bvd2VyAAAACw==",
         "AAAAAQAAAAAAAAAAAAAACVN0YWtlSW5mbwAAAAAAAAMAAAAAAAAABmFtb3VudAAAAAAACwAAAAAAAAARbGFzdF9zdGFrZV91cGRhdGUAAAAAAAAGAAAAAAAAAAlzdGFrZWRfYXQAAAAAAAAG",
         "AAAAAQAAAAAAAAAAAAAACURBT0NvbmZpZwAAAAAAAAUAAAAAAAAAD2V4ZWN1dGlvbl9kZWxheQAAAAAGAAAAAAAAABRtaW5fc3Rha2VfdG9fcHJvcG9zZQAAAAsAAAAAAAAAFnByb3Bvc2FsX3RocmVzaG9sZF9icHMAAAAAAAQAAAAAAAAAEXF1b3J1bV9wZXJjZW50YWdlAAAAAAAABAAAAAAAAAAXdm90aW5nX2R1cmF0aW9uX2xlZGdlcnMAAAAABg==",
-        "AAAAAAAAADBJbml0aWFsaXplIHRoZSBEQU8gd2l0aCBjb21wcmVoZW5zaXZlIHBhcmFtZXRlcnMAAAAKaW5pdGlhbGl6ZQAAAAAAAwAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAABVhcmJpdHJhZ2VfYm90X2FkZHJlc3MAAAAAAAATAAAAAAAAAApkYW9fY29uZmlnAAAAAAfQAAAACURBT0NvbmZpZwAAAAAAAAA=",
-        "AAAAAAAAACZTdGFrZSBLQUxFIHRva2VucyB0byBnYWluIHZvdGluZyBwb3dlcgAAAAAACnN0YWtlX2thbGUAAAAAAAIAAAAAAAAABnN0YWtlcgAAAAAAEwAAAAAAAAAGYW1vdW50AAAAAAALAAAAAA==",
-        "AAAAAAAAACpVbnN0YWtlIEtBTEUgdG9rZW5zICh3aXRoIGNvb2xkb3duIHBlcmlvZCkAAAAAAAx1bnN0YWtlX2thbGUAAAACAAAAAAAAAAZzdGFrZXIAAAAAABMAAAAAAAAABmFtb3VudAAAAAAACwAAAAA=",
-        "AAAAAAAAADVDcmVhdGUgYSBuZXcgZ292ZXJuYW5jZSBwcm9wb3NhbCB3aXRoIHN0cnVjdHVyZWQgZGF0YQAAAAAAAA9jcmVhdGVfcHJvcG9zYWwAAAAABQAAAAAAAAAIcHJvcG9zZXIAAAATAAAAAAAAAA1wcm9wb3NhbF90eXBlAAAAAAAH0AAAAAxQcm9wb3NhbFR5cGUAAAAAAAAABXRpdGxlAAAAAAAAEAAAAAAAAAALZGVzY3JpcHRpb24AAAAAEAAAAAAAAAANcHJvcG9zYWxfZGF0YQAAAAAAB9AAAAAMUHJvcG9zYWxEYXRhAAAAAQAAAAY=",
-        "AAAAAAAAADdDYW5jZWwgYSBwcm9wb3NhbCAob25seSBieSBwcm9wb3NlciBiZWZvcmUgdm90aW5nIGVuZHMpAAAAAA9jYW5jZWxfcHJvcG9zYWwAAAAAAgAAAAAAAAAIcHJvcG9zZXIAAAATAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAA==",
-        "AAAAAAAAABJWb3RlIG9uIGEgcHJvcG9zYWwAAAAAAAR2b3RlAAAAAwAAAAAAAAAFdm90ZXIAAAAAAAATAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAAAAAAh2b3RlX3llcwAAAAEAAAAA",
-        "AAAAAAAAAC5GaW5hbGl6ZSB2b3RpbmcgYW5kIGRldGVybWluZSBwcm9wb3NhbCBvdXRjb21lAAAAAAARZmluYWxpemVfcHJvcG9zYWwAAAAAAAABAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAA==",
-        "AAAAAAAAACpFeGVjdXRlIGEgcGFzc2VkIHByb3Bvc2FsIChhZnRlciB0aW1lbG9jaykAAAAAABBleGVjdXRlX3Byb3Bvc2FsAAAAAgAAAAAAAAAIZXhlY3V0b3IAAAATAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAA==",
-        "AAAAAAAAABRHZXQgcHJvcG9zYWwgZGV0YWlscwAAAAxnZXRfcHJvcG9zYWwAAAABAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAQAAB9AAAAAIUHJvcG9zYWw=",
-        "AAAAAAAAABFHZXQgYWxsIHByb3Bvc2FscwAAAAAAABFnZXRfYWxsX3Byb3Bvc2FscwAAAAAAAAAAAAABAAAD6gAAB9AAAAAIUHJvcG9zYWw=",
-        "AAAAAAAAABlHZXQgYWN0aXZlIHByb3Bvc2FscyBvbmx5AAAAAAAAFGdldF9hY3RpdmVfcHJvcG9zYWxzAAAAAAAAAAEAAAPqAAAH0AAAAAhQcm9wb3NhbA==",
-        "AAAAAAAAABhHZXQgdXNlcidzIHN0YWtlZCBhbW91bnQAAAAJZ2V0X3N0YWtlAAAAAAAAAQAAAAAAAAAEdXNlcgAAABMAAAABAAAACw==",
-        "AAAAAAAAABVHZXQgdXNlcidzIHN0YWtlIGluZm8AAAAAAAAOZ2V0X3N0YWtlX2luZm8AAAAAAAEAAAAAAAAABHVzZXIAAAATAAAAAQAAA+gAAAfQAAAACVN0YWtlSW5mbwAAAA==",
-        "AAAAAAAAABVHZXQgdG90YWwgc3Rha2VkIEtBTEUAAAAAAAAQZ2V0X3RvdGFsX3N0YWtlZAAAAAAAAAABAAAACw==",
-        "AAAAAAAAABFHZXQgYWRtaW4gYWRkcmVzcwAAAAAAAAlnZXRfYWRtaW4AAAAAAAAAAAAAAQAAABM=",
-        "AAAAAAAAABVHZXQgREFPIGNvbmZpZ3VyYXRpb24AAAAAAAAOZ2V0X2Rhb19jb25maWcAAAAAAAAAAAABAAAH0AAAAAlEQU9Db25maWcAAAA=",
-        "AAAAAAAAAB1HZXQgdXNlcidzIHZvdGUgb24gYSBwcm9wb3NhbAAAAAAAAA1nZXRfdXNlcl92b3RlAAAAAAAAAgAAAAAAAAAEdXNlcgAAABMAAAAAAAAAC3Byb3Bvc2FsX2lkAAAAAAYAAAABAAAD6AAAB9AAAAAEVm90ZQ==",
+        "AAAAAAAAAAAAAAAKaW5pdGlhbGl6ZQAAAAAAAwAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAABVhcmJpdHJhZ2VfYm90X2FkZHJlc3MAAAAAAAATAAAAAAAAAApkYW9fY29uZmlnAAAAAAfQAAAACURBT0NvbmZpZwAAAAAAAAA=",
+        "AAAAAAAAAAAAAAAKc3Rha2Vfa2FsZQAAAAAAAgAAAAAAAAAGc3Rha2VyAAAAAAATAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAA",
+        "AAAAAAAAAAAAAAAMdW5zdGFrZV9rYWxlAAAAAgAAAAAAAAAGc3Rha2VyAAAAAAATAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAA",
+        "AAAAAAAAAAAAAAAPY3JlYXRlX3Byb3Bvc2FsAAAAAAUAAAAAAAAACHByb3Bvc2VyAAAAEwAAAAAAAAANcHJvcG9zYWxfdHlwZQAAAAAAB9AAAAAMUHJvcG9zYWxUeXBlAAAAAAAAAAV0aXRsZQAAAAAAABAAAAAAAAAAC2Rlc2NyaXB0aW9uAAAAABAAAAAAAAAADXByb3Bvc2FsX2RhdGEAAAAAAAfQAAAADFByb3Bvc2FsRGF0YQAAAAEAAAAG",
+        "AAAAAAAAAAAAAAAPY2FuY2VsX3Byb3Bvc2FsAAAAAAIAAAAAAAAACHByb3Bvc2VyAAAAEwAAAAAAAAALcHJvcG9zYWxfaWQAAAAABgAAAAA=",
+        "AAAAAAAAAAAAAAAEdm90ZQAAAAMAAAAAAAAABXZvdGVyAAAAAAAAEwAAAAAAAAALcHJvcG9zYWxfaWQAAAAABgAAAAAAAAAIdm90ZV95ZXMAAAABAAAAAA==",
+        "AAAAAAAAAAAAAAARZmluYWxpemVfcHJvcG9zYWwAAAAAAAABAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAA==",
+        "AAAAAAAAAAAAAAAQZXhlY3V0ZV9wcm9wb3NhbAAAAAIAAAAAAAAACGV4ZWN1dG9yAAAAEwAAAAAAAAALcHJvcG9zYWxfaWQAAAAABgAAAAA=",
+        "AAAAAAAAAAAAAAAMZ2V0X3Byb3Bvc2FsAAAAAQAAAAAAAAALcHJvcG9zYWxfaWQAAAAABgAAAAEAAAfQAAAACFByb3Bvc2Fs",
+        "AAAAAAAAAAAAAAARZ2V0X2FsbF9wcm9wb3NhbHMAAAAAAAAAAAAAAQAAA+oAAAfQAAAACFByb3Bvc2Fs",
+        "AAAAAAAAAAAAAAAUZ2V0X2FjdGl2ZV9wcm9wb3NhbHMAAAAAAAAAAQAAA+oAAAfQAAAACFByb3Bvc2Fs",
+        "AAAAAAAAAAAAAAAJZ2V0X3N0YWtlAAAAAAAAAQAAAAAAAAAEdXNlcgAAABMAAAABAAAACw==",
+        "AAAAAAAAAAAAAAAOZ2V0X3N0YWtlX2luZm8AAAAAAAEAAAAAAAAABHVzZXIAAAATAAAAAQAAA+gAAAfQAAAACVN0YWtlSW5mbwAAAA==",
+        "AAAAAAAAAAAAAAAQZ2V0X3RvdGFsX3N0YWtlZAAAAAAAAAABAAAACw==",
+        "AAAAAAAAAAAAAAAJZ2V0X2FkbWluAAAAAAAAAAAAAAEAAAAT",
+        "AAAAAAAAAAAAAAAOZ2V0X2Rhb19jb25maWcAAAAAAAAAAAABAAAH0AAAAAlEQU9Db25maWcAAAA=",
+        "AAAAAAAAAAAAAAANZ2V0X3VzZXJfdm90ZQAAAAAAAAIAAAAAAAAABHVzZXIAAAATAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAAGAAAAAQAAA+gAAAfQAAAABFZvdGU=",
         "AAAAAQAAAAAAAAAAAAAAD0FyYml0cmFnZUNvbmZpZwAAAAAGAAAAAAAAAAdlbmFibGVkAAAAAAEAAAAAAAAADW1heF9nYXNfcHJpY2UAAAAAAAALAAAAAAAAAA5tYXhfdHJhZGVfc2l6ZQAAAAAACwAAAAAAAAANbWluX2xpcXVpZGl0eQAAAAAAAAsAAAAAAAAADm1pbl9wcm9maXRfYnBzAAAAAAAEAAAAAAAAABZzbGlwcGFnZV90b2xlcmFuY2VfYnBzAAAAAAAE",
         "AAAAAQAAAAAAAAAAAAAADlN0YWJsZWNvaW5QYWlyAAAAAAAFAAAAAAAAABdkZXZpYXRpb25fdGhyZXNob2xkX2JwcwAAAAAEAAAAAAAAAAtmaWF0X3N5bWJvbAAAAAARAAAAAAAAABJzdGFibGVjb2luX2FkZHJlc3MAAAAAABMAAAAAAAAAEXN0YWJsZWNvaW5fc3ltYm9sAAAAAAAAEQAAAAAAAAAKdGFyZ2V0X3BlZwAAAAAACw==",
         "AAAAAQAAAAAAAAAAAAAAFkVuaGFuY2VkU3RhYmxlY29pblBhaXIAAAAAAAYAAAAAAAAABGJhc2UAAAfQAAAADlN0YWJsZWNvaW5QYWlyAAAAAAAAAAAAB2VuYWJsZWQAAAAAAQAAAAAAAAAKZmVlX2NvbmZpZwAAAAAH0AAAABBGZWVDb25maWd1cmF0aW9uAAAAAAAAAA1wcmljZV9zb3VyY2VzAAAAAAAH0AAAAAxQcmljZVNvdXJjZXMAAAAAAAAAC3Jpc2tfY29uZmlnAAAAB9AAAAARUmlza0NvbmZpZ3VyYXRpb24AAAAAAAAAAAAAC3R3YXBfY29uZmlnAAAAB9AAAAARVFdBUENvbmZpZ3VyYXRpb24AAAA=",
