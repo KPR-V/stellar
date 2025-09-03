@@ -1,4 +1,6 @@
-use soroban_sdk::{contractclient, contracttype, Address, Env, Vec as SorobanVec, String, contracterror};
+use soroban_sdk::{
+    contractclient, contracterror, contracttype, Address, Env, String, Vec as SorobanVec,
+};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -25,18 +27,10 @@ pub trait SoroswapRouter {
     ) -> SorobanVec<i128>;
 
     // Matches call with 3 arguments: env, amount_in, path
-    fn get_amounts_out(
-        env: Env,
-        amount_in: i128,
-        path: SorobanVec<Address>,
-    ) -> SorobanVec<i128>;
+    fn get_amounts_out(env: Env, amount_in: i128, path: SorobanVec<Address>) -> SorobanVec<i128>;
 
     // Matches call with 3 arguments: env, token_a, token_b
-    fn get_pair_reserves(
-        env: Env,
-        token_a: Address,
-        token_b: Address,
-    ) -> (i128, i128);
+    fn get_pair_reserves(env: Env, token_a: Address, token_b: Address) -> (i128, i128);
 }
 
 // ✅ FIXED: Token Client with correct argument count
@@ -68,8 +62,10 @@ pub struct PairInfo {
 }
 
 // Real testnet addresses
-pub const SOROSWAP_FACTORY_TESTNET:&str ="CDJTMBYKNUGINFQALHDMPLZYNGUV42GPN4B7QOYTWHRC4EE5IYJM6AES";
-pub const SOROSWAP_ROUTER_TESTNET: &str = "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS";
+pub const SOROSWAP_FACTORY_TESTNET: &str =
+    "CDJTMBYKNUGINFQALHDMPLZYNGUV42GPN4B7QOYTWHRC4EE5IYJM6AES";
+pub const SOROSWAP_ROUTER_TESTNET: &str =
+    "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS";
 pub const USDC_TESTNET: &str = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 pub const XLM_TESTNET: &str = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 
@@ -99,13 +95,8 @@ pub fn execute_real_swap(
     path.push_back(token_b.clone());
 
     // ✅ FIXED: Correct swap call with 6 parameters
-    let amounts = router.swap_exact_assets_for_assets(
-        &amount_in,
-        &min_amount_out,
-        &path,
-        &to,
-        &deadline,
-    );
+    let amounts =
+        router.swap_exact_assets_for_assets(&amount_in, &min_amount_out, &path, &to, &deadline);
 
     if amounts.len() < 2 {
         return Err(DEXError::SwapFailed);
@@ -145,7 +136,7 @@ pub fn get_amounts_out_real(
 
     // ✅ FIXED: Correct get_amounts_out call with 3 parameters
     let amounts = router.get_amounts_out(&amount_in, &path);
-    
+
     if amounts.len() < 2 {
         return Err(DEXError::InsufficientLiquidity);
     }
@@ -180,19 +171,19 @@ fn calculate_price_impact(amount_in: i128, reserve_in: i128, reserve_out: i128) 
     if reserve_in == 0 || reserve_out == 0 {
         return u32::MAX;
     }
-    
+
     let market_price = (reserve_out * 10000) / reserve_in;
     let new_reserve_in = reserve_in + amount_in;
     let new_reserve_out = (reserve_in * reserve_out) / new_reserve_in;
     let actual_out = reserve_out - new_reserve_out;
     let execution_price = (actual_out * 10000) / amount_in;
-    
+
     let impact = if market_price > execution_price {
         market_price - execution_price
     } else {
         0
     };
-    
+
     ((impact * 10000) / market_price) as u32
 }
 
@@ -213,9 +204,13 @@ pub fn calculate_slippage_bps(expected_out: i128, actual_out: i128) -> u32 {
 pub fn estimate_gas_cost(env: &Env, complexity_score: u32) -> i128 {
     let base_cost = 100000i128;
     let variable_cost = (complexity_score as i128) * 2500;
-    
-    let network_multiplier = if env.ledger().sequence() % 100 > 80 { 150 } else { 100 };
-    
+
+    let network_multiplier = if env.ledger().sequence() % 100 > 80 {
+        150
+    } else {
+        100
+    };
+
     ((base_cost + variable_cost) * network_multiplier) / 100
 }
 
@@ -226,26 +221,21 @@ pub fn simulate_trade(
     amount_in: i128,
 ) -> Option<SwapResult> {
     match get_amounts_out_real(env, amount_in, token_in, token_out) {
-        Ok(amount_out) => {
-            match get_pair_info_real(env, token_in, token_out) {
-                Ok(pair_info) => {
-                    let fees_paid = (amount_in * pair_info.fee_bps as i128) / 10000;
-                    let price_impact = calculate_price_impact(
-                        amount_in, 
-                        pair_info.reserve_a, 
-                        pair_info.reserve_b
-                    );
+        Ok(amount_out) => match get_pair_info_real(env, token_in, token_out) {
+            Ok(pair_info) => {
+                let fees_paid = (amount_in * pair_info.fee_bps as i128) / 10000;
+                let price_impact =
+                    calculate_price_impact(amount_in, pair_info.reserve_a, pair_info.reserve_b);
 
-                    Some(SwapResult {
-                        amount_out,
-                        fees_paid,
-                        price_impact_bps: price_impact,
-                        success: true,
-                    })
-                }
-                Err(_) => None,
+                Some(SwapResult {
+                    amount_out,
+                    fees_paid,
+                    price_impact_bps: price_impact,
+                    success: true,
+                })
             }
-        }
+            Err(_) => None,
+        },
         Err(_) => None,
     }
 }

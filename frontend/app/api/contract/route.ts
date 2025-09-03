@@ -14,7 +14,7 @@ const safeStringify = (obj: any) => {
   });
 };
 
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CCTQAS4ZSWQSMFD65J4IZ27RXJCWV6RLTJEIFQZDGS2VMDHMLPECCRG2';
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CC4NSFEAH4BSQHRWLXEPWUXFEFEJVJLMW5RNWW4YUZELBUSRD6NTZ6VH';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

@@ -1,20 +1,15 @@
 #![no_std]
 #![allow(dead_code)]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, String, Symbol, Vec,BytesN};
-
-use shared_types::{
-    ArbitrageConfig, 
-    EnhancedStablecoinPair, 
-    TradingVenue,
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
+use shared_types::{ArbitrageConfig, EnhancedStablecoinPair, TradingVenue};
 
 const KALE_TOKEN_ADDRESS: &str = "CAAVU2UQJLMZ3GUZFM56KVNHLPA3ZSSNR4VP2U53YBXFD2GI3QLIVHZZ";
 
-
 const EXECUTION_TIMELOCK: u64 = 24 * 60 * 60;
-
 
 const MAX_DESCRIPTION_LENGTH: u32 = 1000;
 
@@ -63,7 +58,7 @@ pub struct Proposal {
     pub proposal_data: ProposalData,
     pub created_at: u64,
     pub voting_ends_at: u64,
-    pub execution_earliest: u64, 
+    pub execution_earliest: u64,
     pub yes_votes: i128,
     pub no_votes: i128,
     pub status: ProposalStatus,
@@ -97,7 +92,7 @@ pub struct DAOConfig {
     pub voting_duration_ledgers: u64,
     pub quorum_percentage: u32,
     pub execution_delay: u64,
-    pub proposal_threshold_bps: u32, 
+    pub proposal_threshold_bps: u32,
 }
 
 #[contract]
@@ -147,7 +142,6 @@ impl DAOGovernance {
             .instance()
             .set(&Symbol::new(&env, "initialized"), &true);
 
- 
         let empty_proposals: Vec<Proposal> = Vec::new(&env);
         env.storage()
             .instance()
@@ -159,7 +153,6 @@ impl DAOGovernance {
         );
     }
 
- 
     pub fn stake_kale(env: Env, staker: Address, amount: i128) {
         staker.require_auth();
 
@@ -167,7 +160,6 @@ impl DAOGovernance {
             panic!("Stake amount must be positive");
         }
 
-      
         let kale_token = Address::from_string(&String::from_str(&env, KALE_TOKEN_ADDRESS));
         let token_client = TokenClient::new(&env, &kale_token);
 
@@ -178,7 +170,6 @@ impl DAOGovernance {
 
         token_client.transfer(&staker, &env.current_contract_address(), &amount);
 
-     
         let stake_key = (Symbol::new(&env, "stake"), staker.clone());
         let current_stake: StakeInfo =
             env.storage()
@@ -192,13 +183,12 @@ impl DAOGovernance {
 
         let new_stake = StakeInfo {
             amount: current_stake.amount + amount,
-            staked_at: current_stake.staked_at, 
+            staked_at: current_stake.staked_at,
             last_stake_update: env.ledger().timestamp(),
         };
 
         env.storage().persistent().set(&stake_key, &new_stake);
 
-      
         let total_staked = Self::get_total_staked(&env);
         env.storage()
             .instance()
@@ -213,7 +203,6 @@ impl DAOGovernance {
         );
     }
 
-   
     pub fn unstake_kale(env: Env, staker: Address, amount: i128) {
         staker.require_auth();
 
@@ -228,14 +217,12 @@ impl DAOGovernance {
             panic!("Insufficient staked amount");
         }
 
-      
-        let cooldown_period = 7 * 24 * 60 * 60; 
+        let cooldown_period = 7 * 24 * 60 * 60;
         let ledger_time = env.ledger().timestamp();
         if ledger_time < stake_info.last_stake_update + cooldown_period {
             panic!("Cooldown period not met");
         }
 
-     
         let new_stake = StakeInfo {
             amount: stake_info.amount - amount,
             staked_at: stake_info.staked_at,
@@ -248,13 +235,11 @@ impl DAOGovernance {
             env.storage().persistent().remove(&stake_key);
         }
 
-       
         let total_staked = Self::get_total_staked(&env);
         env.storage()
             .instance()
             .set(&Symbol::new(&env, "total_staked"), &(total_staked - amount));
 
-      
         let kale_token = Address::from_string(&String::from_str(&env, KALE_TOKEN_ADDRESS));
         let token_client = TokenClient::new(&env, &kale_token);
         token_client.transfer(&env.current_contract_address(), &staker, &amount);
@@ -268,7 +253,6 @@ impl DAOGovernance {
         );
     }
 
-  
     pub fn create_proposal(
         env: Env,
         proposer: Address,
@@ -279,7 +263,6 @@ impl DAOGovernance {
     ) -> u64 {
         proposer.require_auth();
 
-   
         if title.len() > 100 {
             panic!("Title too long");
         }
@@ -293,7 +276,6 @@ impl DAOGovernance {
             .get(&Symbol::new(&env, "dao_config"))
             .unwrap();
 
-       
         let stake_key = (Symbol::new(&env, "stake"), proposer.clone());
         let stake_info: StakeInfo = env
             .storage()
@@ -305,14 +287,12 @@ impl DAOGovernance {
             panic!("Insufficient stake to create proposal");
         }
 
-       
         let total_staked = Self::get_total_staked(&env);
         let required_stake = (total_staked * dao_config.proposal_threshold_bps as i128) / 10000;
         if stake_info.amount < required_stake {
             panic!("Insufficient stake relative to total staked");
         }
 
-      
         let proposal_id: u64 = env
             .storage()
             .instance()
@@ -322,11 +302,9 @@ impl DAOGovernance {
             .instance()
             .set(&Symbol::new(&env, "proposal_counter"), &(proposal_id + 1));
 
-      
         let voting_ends_at = env.ledger().sequence() as u64 + dao_config.voting_duration_ledgers;
         let execution_earliest = env.ledger().timestamp() + dao_config.execution_delay;
 
-       
         let quorum_required = (total_staked * dao_config.quorum_percentage as i128) / 100;
 
         let target_contract: Address = env
@@ -354,14 +332,11 @@ impl DAOGovernance {
             cancelled_at: None,
         };
 
-       
         Self::validate_proposal_data(&env, &proposal);
 
-      
         let proposal_key = (Symbol::new(&env, "proposal"), proposal_id);
         env.storage().persistent().set(&proposal_key, &proposal);
 
-     
         let mut proposals: Vec<Proposal> = env
             .storage()
             .instance()
@@ -383,7 +358,6 @@ impl DAOGovernance {
         proposal_id
     }
 
-   
     pub fn cancel_proposal(env: Env, proposer: Address, proposal_id: u64) {
         proposer.require_auth();
 
@@ -398,12 +372,10 @@ impl DAOGovernance {
             panic!("Only proposer can cancel");
         }
 
-       
         if proposal.status != ProposalStatus::Active {
             panic!("Can only cancel active proposals");
         }
 
-       
         proposal.status = ProposalStatus::Cancelled;
         proposal.cancelled_at = Some(env.ledger().timestamp());
         env.storage().persistent().set(&proposal_key, &proposal);
@@ -417,7 +389,6 @@ impl DAOGovernance {
         );
     }
 
-  
     pub fn vote(env: Env, voter: Address, proposal_id: u64, vote_yes: bool) {
         voter.require_auth();
 
@@ -428,7 +399,6 @@ impl DAOGovernance {
             .get(&proposal_key)
             .expect("Proposal not found");
 
-      
         if (env.ledger().sequence() as u64) > proposal.voting_ends_at {
             panic!("Voting period has ended");
         }
@@ -437,7 +407,6 @@ impl DAOGovernance {
             panic!("Proposal is not active");
         }
 
-       
         let stake_key = (Symbol::new(&env, "stake"), voter.clone());
         let stake_info: StakeInfo = env
             .storage()
@@ -445,7 +414,6 @@ impl DAOGovernance {
             .get(&stake_key)
             .expect("Must stake KALE to vote");
 
-       
         let voting_power = if stake_info.staked_at <= proposal.created_at {
             stake_info.amount
         } else {
@@ -456,13 +424,11 @@ impl DAOGovernance {
             panic!("No voting power at proposal creation time");
         }
 
-      
         let vote_key = (Symbol::new(&env, "vote"), voter.clone(), proposal_id);
         if env.storage().persistent().has(&vote_key) {
             panic!("Already voted on this proposal");
         }
 
-     
         let vote = Vote {
             voter: voter.clone(),
             proposal_id,
@@ -472,7 +438,6 @@ impl DAOGovernance {
         };
         env.storage().persistent().set(&vote_key, &vote);
 
-       
         if vote_yes {
             proposal.yes_votes += voting_power;
         } else {
@@ -487,7 +452,6 @@ impl DAOGovernance {
         );
     }
 
- 
     pub fn finalize_proposal(env: Env, proposal_id: u64) {
         let proposal_key = (Symbol::new(&env, "proposal"), proposal_id);
         let mut proposal: Proposal = env
@@ -496,7 +460,6 @@ impl DAOGovernance {
             .get(&proposal_key)
             .expect("Proposal not found");
 
-       
         if (env.ledger().sequence() as u64) <= proposal.voting_ends_at {
             panic!("Voting period not yet ended");
         }
@@ -505,7 +468,6 @@ impl DAOGovernance {
             panic!("Proposal is not active");
         }
 
-       
         let total_votes = proposal.yes_votes + proposal.no_votes;
 
         if total_votes >= proposal.quorum_required && proposal.yes_votes > proposal.no_votes {
@@ -525,7 +487,6 @@ impl DAOGovernance {
         );
     }
 
-  
     pub fn execute_proposal(env: Env, executor: Address, proposal_id: u64) {
         executor.require_auth();
 
@@ -540,12 +501,10 @@ impl DAOGovernance {
             panic!("Proposal has not passed");
         }
 
-     
         if env.ledger().timestamp() < proposal.execution_earliest {
             panic!("Execution timelock not met");
         }
 
-       
         match proposal.proposal_type {
             ProposalType::UpdateConfig => {
                 Self::execute_config_update(&env, &proposal);
@@ -570,7 +529,6 @@ impl DAOGovernance {
             }
         }
 
-       
         proposal.status = ProposalStatus::Executed;
         proposal.executed_at = Some(env.ledger().timestamp());
         env.storage().persistent().set(&proposal_key, &proposal);
@@ -584,7 +542,6 @@ impl DAOGovernance {
         );
     }
 
- 
     pub fn get_proposal(env: Env, proposal_id: u64) -> Proposal {
         let proposal_key = (Symbol::new(&env, "proposal"), proposal_id);
         env.storage()
@@ -593,7 +550,6 @@ impl DAOGovernance {
             .expect("Proposal not found")
     }
 
-  
     pub fn get_all_proposals(env: Env) -> Vec<Proposal> {
         env.storage()
             .instance()
@@ -601,7 +557,6 @@ impl DAOGovernance {
             .unwrap_or(Vec::new(&env))
     }
 
- 
     pub fn get_active_proposals(env: Env) -> Vec<Proposal> {
         let all_proposals = Self::get_all_proposals(env.clone());
         let mut active = Vec::new(&env);
@@ -615,7 +570,6 @@ impl DAOGovernance {
         active
     }
 
-    
     pub fn get_stake(env: Env, user: Address) -> i128 {
         let stake_key = (Symbol::new(&env, "stake"), user);
         env.storage()
@@ -625,13 +579,11 @@ impl DAOGovernance {
             .unwrap_or(0)
     }
 
-    
     pub fn get_stake_info(env: Env, user: Address) -> Option<StakeInfo> {
         let stake_key = (Symbol::new(&env, "stake"), user);
         env.storage().persistent().get(&stake_key)
     }
 
-   
     pub fn get_total_staked(env: &Env) -> i128 {
         env.storage()
             .instance()
@@ -639,7 +591,6 @@ impl DAOGovernance {
             .unwrap_or(0i128)
     }
 
-   
     pub fn get_admin(env: Env) -> Address {
         env.storage()
             .instance()
@@ -647,7 +598,6 @@ impl DAOGovernance {
             .unwrap()
     }
 
-  
     pub fn get_dao_config(env: Env) -> DAOConfig {
         env.storage()
             .instance()
@@ -655,13 +605,10 @@ impl DAOGovernance {
             .unwrap()
     }
 
-   
     pub fn get_user_vote(env: Env, user: Address, proposal_id: u64) -> Option<Vote> {
         let vote_key = (Symbol::new(&env, "vote"), user, proposal_id);
         env.storage().persistent().get(&vote_key)
     }
-
-  
 
     fn validate_proposal_data(_env: &Env, proposal: &Proposal) {
         match &proposal.proposal_type {
@@ -690,16 +637,14 @@ impl DAOGovernance {
                     panic!("Symbol data required for PausePair proposal");
                 }
             }
-            _ => {} 
+            _ => {}
         }
     }
 
-  
     fn execute_config_update(env: &Env, proposal: &Proposal) {
         let bot_client = ArbBotClient::new(env, &proposal.target_contract);
 
         if let Some(config) = &proposal.proposal_data.config_data {
-         
             bot_client.update_config_dao(&env.current_contract_address(), config);
         } else {
             panic!("No config data in proposal");
@@ -710,7 +655,6 @@ impl DAOGovernance {
         let bot_client = ArbBotClient::new(env, &proposal.target_contract);
 
         if let Some(pair) = &proposal.proposal_data.pair_data {
-            
             bot_client.add_enhanced_pair_dao(&env.current_contract_address(), pair);
         } else {
             panic!("No pair data in proposal");
@@ -721,14 +665,13 @@ impl DAOGovernance {
         let bot_client = ArbBotClient::new(env, &proposal.target_contract);
 
         if let Some(venue) = &proposal.proposal_data.venue_data {
-          
             bot_client.add_trading_venue_dao(&env.current_contract_address(), venue);
         } else {
             panic!("No venue data in proposal");
         }
     }
     fn execute_pause_pair(env: &Env, proposal: &Proposal) {
-        let bot_client = ArbBotClient::new(env, &proposal.target_contract); 
+        let bot_client = ArbBotClient::new(env, &proposal.target_contract);
 
         if let Some(symbol) = &proposal.proposal_data.symbol_data {
             bot_client.pause_pair_dao(&env.current_contract_address(), symbol);
@@ -738,7 +681,7 @@ impl DAOGovernance {
     }
 
     fn execute_emergency_stop(env: &Env, proposal: &Proposal) {
-        let bot_client = ArbBotClient::new(env, &proposal.target_contract); 
+        let bot_client = ArbBotClient::new(env, &proposal.target_contract);
         bot_client.emergency_stop(&env.current_contract_address());
     }
     fn execute_transfer_admin(env: &Env, proposal: &Proposal) {
@@ -759,7 +702,6 @@ impl DAOGovernance {
     }
 
     fn execute_update_risk_manager(env: &Env, proposal: &Proposal) {
-      
         env.events().publish(
             (
                 Symbol::new(env, "risk_manager"),
@@ -769,7 +711,6 @@ impl DAOGovernance {
         );
     }
 
-  
     fn require_admin(env: &Env, caller: &Address) {
         let admin: Address = env
             .storage()
@@ -784,53 +725,44 @@ impl DAOGovernance {
     pub fn upgrade_contract(env: Env, admin: Address, new_wasm_hash: BytesN<32>) {
         admin.require_auth();
         Self::require_admin(&env, &admin);
-        
-        
+
         let wasm_hash_clone = new_wasm_hash.clone();
-        
-        
+
         env.deployer().update_current_contract_wasm(wasm_hash_clone);
-        
-        
+
         env.events().publish(
             (Symbol::new(&env, "contract"), Symbol::new(&env, "upgraded")),
             (admin, new_wasm_hash),
         );
     }
-    
+
     pub fn get_version(_env: Env) -> u32 {
-        2  
+        2
     }
-    
-    
+
     pub fn update_min_stake_admin(env: Env, admin: Address, new_min_stake: i128) {
         admin.require_auth();
         Self::require_admin(&env, &admin);
-        
+
         let mut config: DAOConfig = env
             .storage()
             .instance()
             .get(&Symbol::new(&env, "dao_config"))
             .unwrap();
-        
+
         let old_min_stake = config.min_stake_to_propose;
         config.min_stake_to_propose = new_min_stake;
-        
+
         env.storage()
             .instance()
             .set(&Symbol::new(&env, "dao_config"), &config);
-            
+
         env.events().publish(
             (Symbol::new(&env, "min_stake"), Symbol::new(&env, "updated")),
             (old_min_stake, new_min_stake, admin),
         );
     }
-    
-    
-
-
 }
-
 
 #[soroban_sdk::contractclient(name = "TokenClient")]
 pub trait Token {
@@ -838,7 +770,6 @@ pub trait Token {
     fn balance(env: Env, id: Address) -> i128;
     fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32);
 }
-
 
 #[soroban_sdk::contractclient(name = "ArbBotClient")]
 pub trait ArbitrageBotContract {
@@ -849,5 +780,3 @@ pub trait ArbitrageBotContract {
     fn emergency_stop(env: Env, caller: Address);
     fn transfer_admin(env: Env, current_admin: Address, new_admin: Address);
 }
-
-
