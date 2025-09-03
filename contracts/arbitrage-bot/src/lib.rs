@@ -242,7 +242,11 @@ impl ArbitrageBot {
         }
 
         // ✅ Check internal contract balance (not user wallet)
-        let token = &opportunity.base_opportunity.pair.stablecoin_address;
+        let token = if opportunity.base_opportunity.trade_direction == Symbol::new(&env, "BUY") {
+            &opportunity.base_opportunity.pair.quote_asset_address
+        } else {
+            &opportunity.base_opportunity.pair.base_asset_address
+        };
         let user_balance = profile.balances.get(token.clone()).unwrap_or(0);
         if user_balance < trade_amount {
             return Self::create_failed_execution(&env, &opportunity, "INSUFFICIENT_USER_BALANCE");
@@ -665,7 +669,7 @@ impl ArbitrageBot {
         let mut updated_pairs: Vec<EnhancedStablecoinPair> = Vec::new(&env);
         for pair in pairs.iter() {
             let mut updated_pair = pair.clone();
-            if pair.base.stablecoin_symbol == stablecoin_symbol {
+            if pair.base.quote_asset_symbol == stablecoin_symbol {
                 updated_pair.enabled = false;
             }
             updated_pairs.push_back(updated_pair);
@@ -825,13 +829,10 @@ impl ArbitrageBot {
         stellar_oracle: &Address,
     ) -> Option<EnhancedArbitrageOpportunity> {
         env.events().publish(
+            (Symbol::new(env, "arbitrage"), Symbol::new(env, "checking_pair")),
             (
-                Symbol::new(env, "arbitrage"),
-                Symbol::new(env, "checking_pair"),
-            ),
-            (
-                pair.base.fiat_symbol.clone(),
-                pair.base.stablecoin_symbol.clone(),
+                pair.base.base_asset_symbol.clone(),
+                pair.base.quote_asset_symbol.clone(),
             ),
         );
 
@@ -842,8 +843,8 @@ impl ArbitrageBot {
                     Symbol::new(env, "pair_disabled"),
                 ),
                 (
-                    pair.base.fiat_symbol.clone(),
-                    pair.base.stablecoin_symbol.clone(),
+                    pair.base.base_asset_symbol.clone(),
+                    pair.base.quote_asset_symbol.clone(),
                 ),
             );
             return None;
@@ -852,15 +853,15 @@ impl ArbitrageBot {
         env.events().publish(
             (
                 Symbol::new(env, "arbitrage"),
-                Symbol::new(env, "fetching_fiat_price"),
+                Symbol::new(env, "fetching_base_price"),       // ✅ Clear for any pair type
             ),
-            (pair.base.fiat_symbol.clone(),),
+            (pair.base.base_asset_symbol.clone(),),
         );
 
         let fiat_price = Self::get_price_with_fallback(
             env,
             &pair.price_sources.fiat_sources,
-            &pair.base.fiat_symbol,
+            &pair.base.base_asset_symbol,
             forex_oracle,
             stellar_oracle,
         )?;
@@ -876,15 +877,15 @@ impl ArbitrageBot {
         env.events().publish(
             (
                 Symbol::new(env, "arbitrage"),
-                Symbol::new(env, "fetching_stablecoin_price"),
+                Symbol::new(env, "fetching_quote_price"),      // ✅ Clear for any pair type
             ),
-            (pair.base.stablecoin_symbol.clone(),),
+            (pair.base.quote_asset_symbol.clone(),),
         );
 
         let stablecoin_price = Self::get_price_with_fallback(
             env,
             &pair.price_sources.stablecoin_sources,
-            &pair.base.stablecoin_symbol,
+            &pair.base.quote_asset_symbol,
             crypto_oracle,
             stellar_oracle,
         )?;
@@ -1053,11 +1054,12 @@ pub fn add_crypto_to_crypto_pair(
 
     let pair = EnhancedStablecoinPair {
         base: StablecoinPair {
-            deviation_threshold_bps: deviation_threshold,
-            fiat_symbol: base_crypto.clone(),
-            stablecoin_address: quote_address.clone(),
-            stablecoin_symbol: quote_crypto.clone(),
+            base_asset_address: base_address,           // ✅ Now correct
+            quote_asset_address: quote_address,         // ✅ Now correct
+            base_asset_symbol: base_crypto.clone(),     // ✅ Now correct
+            quote_asset_symbol: quote_crypto.clone(),   // ✅ Now correct
             target_peg: 10000,
+            deviation_threshold_bps: deviation_threshold,
         },
         enabled: true,
         fee_config: FeeConfiguration {
@@ -1102,20 +1104,20 @@ pub fn add_crypto_to_crypto_pair(
     };
 
     let mut pairs: Vec<EnhancedStablecoinPair> = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(&env, "pairs"))
-        .unwrap_or(Vec::new(&env));
+    .storage()
+    .instance()
+    .get(&Symbol::new(&env, "pairs"))
+    .unwrap_or(Vec::new(&env));
 
-    pairs.push_back(pair);
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "pairs"), &pairs);
+pairs.push_back(pair);
+env.storage()
+    .instance()
+    .set(&Symbol::new(&env, "pairs"), &pairs);
 
-    env.events().publish(
-        (Symbol::new(&env, "crypto_pair"), Symbol::new(&env, "added")),
-        (base_crypto, quote_crypto),
-    );
+env.events().publish(
+    (Symbol::new(&env, "crypto_pair"), Symbol::new(&env, "added")),
+    (base_crypto, quote_crypto),
+);
 }
 
     // NEW: Helper function to try different crypto asset formats
@@ -1213,8 +1215,8 @@ pub fn add_crypto_to_crypto_pair(
                 Symbol::new(&env, "evaluating"),
             ),
             (
-                pair.base.fiat_symbol.clone(),
-                pair.base.stablecoin_symbol.clone(),
+                pair.base.base_asset_symbol.clone(),    // ✅ Correct field
+                pair.base.quote_asset_symbol.clone(),   // ✅ Correct field
                 pair.enabled,
             ),
         );
@@ -1378,8 +1380,17 @@ pub fn add_crypto_to_crypto_pair(
         trade_amount: i128,
         _venue_address: &Address,
     ) -> TradeExecution {
-        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
-        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+        let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+            (
+                opportunity.base_opportunity.pair.quote_asset_address.clone(),
+                opportunity.base_opportunity.pair.base_asset_address.clone()
+            )
+        } else {
+            (
+                opportunity.base_opportunity.pair.base_asset_address.clone(),
+                opportunity.base_opportunity.pair.quote_asset_address.clone()
+            )
+        };
 
         let deadline = env.ledger().timestamp() + 300;
 
@@ -1394,8 +1405,8 @@ pub fn add_crypto_to_crypto_pair(
 
         match crate::dex::execute_real_swap(
             env,
-            token_in,
-            token_out,
+            &token_in,
+            &token_out,
             trade_amount,
             min_amount_out,
             &env.current_contract_address(),
@@ -1442,10 +1453,19 @@ pub fn add_crypto_to_crypto_pair(
         trade_amount: i128,
         _venue_address: &Address,
     ) -> Option<SwapResult> {
-        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
-        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+        let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+            (
+                opportunity.base_opportunity.pair.quote_asset_address.clone(),
+                opportunity.base_opportunity.pair.base_asset_address.clone()
+            )
+        } else {
+            (
+                opportunity.base_opportunity.pair.base_asset_address.clone(),
+                opportunity.base_opportunity.pair.quote_asset_address.clone()
+            )
+        };
 
-        crate::dex::simulate_trade(env, token_in, token_out, trade_amount)
+        crate::dex::simulate_trade(env, &token_in, &token_out, trade_amount)
     }
     fn check_trade_risk(env: &Env, risk_manager: &Address, trade_size: i128) -> Symbol {
         let risk_client = RiskManagerClient::new(env, risk_manager);
@@ -1622,30 +1642,43 @@ pub fn add_crypto_to_crypto_pair(
         trade_amount: i128,
         venue_address: &Address,
     ) -> TradeExecution {
-        let token_in = &opportunity.base_opportunity.pair.stablecoin_address;
-        let token_out = &opportunity.base_opportunity.pair.stablecoin_address;
+        // Determine the correct direction of the trade based on the opportunity
+    let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+        // If BUY, we use the quote asset (e.g., XLM) to buy the base asset (e.g., USDC)
+        (
+            opportunity.base_opportunity.pair.quote_asset_address.clone(),
+            opportunity.base_opportunity.pair.base_asset_address.clone()
+        )
+    } else {
+        // If SELL, we use the base asset (e.g., USDC) to buy the quote asset (e.g., XLM)
+        (
+            opportunity.base_opportunity.pair.base_asset_address.clone(),
+            opportunity.base_opportunity.pair.quote_asset_address.clone()
+        )
+    };
 
-        let deadline = env.ledger().timestamp() + 300;
+    let deadline = env.ledger().timestamp() + 300;
 
-        let config: ArbitrageConfig = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(env, "config"))
-            .unwrap();
+    let config: ArbitrageConfig = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "config"))
+        .unwrap();
 
-        let min_amount_out =
-            trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
-        let dex_client = StellarDEXClient::new(env, venue_address);
+    let min_amount_out =
+        trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
+    let dex_client = StellarDEXClient::new(env, venue_address);
 
-        let path = Vec::from_array(env, [token_in.clone(), token_out.clone()]);
+    // ✅ This path is now correct (e.g., [USDC_address, XLM_address])
+    let path = Vec::from_array(env, [token_in, token_out]);
 
-        let amounts = dex_client.swap_exact_tokens_for_tokens(
-            &trade_amount,
-            &min_amount_out,
-            &path,
-            &env.current_contract_address(),
-            &deadline,
-        );
+    let amounts = dex_client.swap_exact_tokens_for_tokens(
+        &trade_amount,
+        &min_amount_out,
+        &path,
+        &env.current_contract_address(), // The bot receives the swapped tokens
+        &deadline,
+    );
 
         let amount_out = amounts.get(1).unwrap_or(0);
         let gas_cost = estimate_gas_cost(env, 3);

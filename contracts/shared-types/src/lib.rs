@@ -15,9 +15,10 @@ pub struct ArbitrageConfig {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StablecoinPair {
-    pub stablecoin_symbol: Symbol,
-    pub fiat_symbol: Symbol,
-    pub stablecoin_address: Address,
+    pub base_asset_address: Address,      // e.g., Address for USDC
+    pub quote_asset_address: Address,     // e.g., Address for XLM
+    pub base_asset_symbol: Symbol,
+    pub quote_asset_symbol: Symbol,
     pub target_peg: i128,
     pub deviation_threshold_bps: u32,
 }
