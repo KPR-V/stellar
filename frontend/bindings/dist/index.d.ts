@@ -4,10 +4,21 @@ import type { u32, u64, i128, Option } from '@stellar/stellar-sdk/contract';
 export * from '@stellar/stellar-sdk';
 export * as contract from '@stellar/stellar-sdk/contract';
 export * as rpc from '@stellar/stellar-sdk/rpc';
-export declare const networks: {
-    readonly testnet: {
-        readonly networkPassphrase: "Test SDF Network ; September 2015";
-        readonly contractId: "CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE";
+export declare const DEXError: {
+    1: {
+        message: string;
+    };
+    2: {
+        message: string;
+    };
+    3: {
+        message: string;
+    };
+    4: {
+        message: string;
+    };
+    5: {
+        message: string;
     };
 };
 export interface SwapResult {
@@ -22,12 +33,6 @@ export interface PairInfo {
     reserve_a: i128;
     reserve_b: i128;
 }
-export interface TradingVenue {
-    dex_address: string;
-    enabled: boolean;
-    fee_bps: u32;
-    min_liquidity: i128;
-}
 export interface ArbitrageConfig {
     enabled: boolean;
     max_gas_price: i128;
@@ -37,10 +42,11 @@ export interface ArbitrageConfig {
     slippage_tolerance_bps: u32;
 }
 export interface StablecoinPair {
+    base_asset_address: string;
+    base_asset_symbol: string;
     deviation_threshold_bps: u32;
-    fiat_symbol: string;
-    stablecoin_address: string;
-    stablecoin_symbol: string;
+    quote_asset_address: string;
+    quote_asset_symbol: string;
     target_peg: i128;
 }
 export interface EnhancedStablecoinPair {
@@ -81,6 +87,10 @@ export type AssetType = {
     tag: "Address";
     values: void;
 };
+export interface PriceData {
+    price: i128;
+    timestamp: u64;
+}
 export interface RiskConfiguration {
     correlation_limit: i128;
     max_daily_volume: i128;
@@ -170,7 +180,6 @@ export interface TradingVenue {
 export interface Client {
     /**
      * Construct and simulate a initialize_testnet transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Initialize with testnet oracles (one-time setup)
      */
     initialize_testnet: ({ admin, config, risk_manager }: {
         admin: string;
@@ -192,7 +201,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Initialize the arbitrage bot with full configuration
      */
     initialize: ({ admin, config, forex_oracle, crypto_oracle, stellar_oracle, risk_manager }: {
         admin: string;
@@ -217,7 +225,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a initialize_user_account transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Initialize user account for individual resource management
      */
     initialize_user_account: ({ user, initial_config, risk_limits }: {
         user: string;
@@ -239,7 +246,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a deposit_user_funds transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * User deposits funds into their personal trading account
      */
     deposit_user_funds: ({ user, token_address, amount }: {
         user: string;
@@ -261,7 +267,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a withdraw_user_funds transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * User withdraws funds from their personal trading account
      */
     withdraw_user_funds: ({ user, token_address, amount }: {
         user: string;
@@ -283,7 +288,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a execute_user_arbitrage transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Execute an arbitrage trade using a user's individual funds
      */
     execute_user_arbitrage: ({ user, opportunity, trade_amount, venue_address }: {
         user: string;
@@ -306,7 +310,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<TradeExecution>>;
     /**
      * Construct and simulate a get_user_performance_metrics transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get a specific user's performance metrics
      */
     get_user_performance_metrics: ({ user, days }: {
         user: string;
@@ -327,7 +330,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<PerformanceMetrics>>;
     /**
      * Construct and simulate a get_user_balances transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get a user's personal balances
      */
     get_user_balances: ({ user }: {
         user: string;
@@ -347,7 +349,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Map<string, i128>>>;
     /**
      * Construct and simulate a get_user_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get a user's personal trading configuration
      */
     get_user_config: ({ user }: {
         user: string;
@@ -367,7 +368,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<ArbitrageConfig>>;
     /**
      * Construct and simulate a update_user_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Update a user's personal trading configuration
      */
     update_user_config: ({ user, new_config }: {
         user: string;
@@ -388,7 +388,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a get_user_trade_history transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get a user's personal trade history
      */
     get_user_trade_history: ({ user, limit }: {
         user: string;
@@ -409,7 +408,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Array<TradeExecution>>>;
     /**
      * Construct and simulate a set_dao_governance transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Set the DAO governance contract address (admin only, one-time)
      */
     set_dao_governance: ({ admin, dao_address }: {
         admin: string;
@@ -430,7 +428,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a update_config_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Update config via DAO proposal
      */
     update_config_dao: ({ caller, new_config }: {
         caller: string;
@@ -451,7 +448,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a add_enhanced_pair_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Add trading pair via DAO proposal
      */
     add_enhanced_pair_dao: ({ caller, pair }: {
         caller: string;
@@ -472,7 +468,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a add_trading_venue_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Add trading venue via DAO proposal
      */
     add_trading_venue_dao: ({ caller, venue }: {
         caller: string;
@@ -493,7 +488,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a pause_pair_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Pause pair via DAO proposal
      */
     pause_pair_dao: ({ caller, stablecoin_symbol }: {
         caller: string;
@@ -514,7 +508,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a add_keeper transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Add keeper role (admin only)
      */
     add_keeper: ({ caller, keeper }: {
         caller: string;
@@ -535,7 +528,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a transfer_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Transfer admin role to a new address
      */
     transfer_admin: ({ current_admin, new_admin }: {
         current_admin: string;
@@ -556,7 +548,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a get_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get the current admin address
      */
     get_admin: (options?: {
         /**
@@ -574,7 +565,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<string>>;
     /**
      * Construct and simulate a add_enhanced_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Add enhanced trading pair with oracle preferences (admin only)
      */
     add_enhanced_pair: ({ caller, pair }: {
         caller: string;
@@ -595,7 +585,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a add_trading_venue transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Add a trading venue (admin only)
      */
     add_trading_venue: ({ caller, venue }: {
         caller: string;
@@ -616,7 +605,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a scan_advanced_opportunities transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Scan for arbitrage opportunities across all configured pairs
      */
     scan_advanced_opportunities: (options?: {
         /**
@@ -634,7 +622,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<Array<EnhancedArbitrageOpportunity>>>;
     /**
      * Construct and simulate a execute_enhanced_arbitrage transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Execute an arbitrage trade using shared/global funds
      */
     execute_enhanced_arbitrage: ({ caller, opportunity, trade_amount, venue_address }: {
         caller: string;
@@ -657,7 +644,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<TradeExecution>>;
     /**
      * Construct and simulate a pause_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Pause a specific trading pair (admin only)
      */
     pause_pair: ({ caller, stablecoin_symbol }: {
         caller: string;
@@ -678,7 +664,6 @@ export interface Client {
     }) => Promise<AssembledTransaction<null>>;
     /**
      * Construct and simulate a get_performance_metrics transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Get global performance metrics
      */
     get_performance_metrics: ({ days }: {
         days: u32;
@@ -846,6 +831,110 @@ export interface Client {
          */
         simulate?: boolean;
     }) => Promise<AssembledTransaction<Array<TradeExecution>>>;
+    /**
+     * Construct and simulate a add_crypto_to_crypto_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    add_crypto_to_crypto_pair: ({ caller, base_crypto, quote_crypto, base_address, quote_address, deviation_threshold }: {
+        caller: string;
+        base_crypto: string;
+        quote_crypto: string;
+        base_address: string;
+        quote_address: string;
+        deviation_threshold: u32;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<null>>;
+    /**
+     * Construct and simulate a debug_test_oracle transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    debug_test_oracle: ({ oracle_address, symbol, asset_type }: {
+        oracle_address: string;
+        symbol: string;
+        asset_type: AssetType;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<Option<PriceData>>>;
+    /**
+     * Construct and simulate a debug_evaluate_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    debug_evaluate_pair: ({ pair_index }: {
+        pair_index: u32;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<Option<EnhancedArbitrageOpportunity>>>;
+    /**
+     * Construct and simulate a debug_get_price_sources transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    debug_get_price_sources: ({ pair_index }: {
+        pair_index: u32;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<Option<PriceSources>>>;
+    /**
+     * Construct and simulate a debug_fetch_prices transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    debug_fetch_prices: ({ fiat_symbol, stablecoin_symbol, price_sources }: {
+        fiat_symbol: string;
+        stablecoin_symbol: string;
+        price_sources: PriceSources;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<readonly [Option<PriceData>, Option<PriceData>]>>;
 }
 export declare class Client extends ContractClient {
     readonly options: ContractClientOptions;
@@ -894,5 +983,10 @@ export declare class Client extends ContractClient {
         emergency_stop: (json: string) => AssembledTransaction<null>;
         get_pairs: (json: string) => AssembledTransaction<StablecoinPair[]>;
         get_trade_history: (json: string) => AssembledTransaction<TradeExecution[]>;
+        add_crypto_to_crypto_pair: (json: string) => AssembledTransaction<null>;
+        debug_test_oracle: (json: string) => AssembledTransaction<Option<PriceData>>;
+        debug_evaluate_pair: (json: string) => AssembledTransaction<Option<EnhancedArbitrageOpportunity>>;
+        debug_get_price_sources: (json: string) => AssembledTransaction<Option<PriceSources>>;
+        debug_fetch_prices: (json: string) => AssembledTransaction<readonly [Option<PriceData>, Option<PriceData>]>;
     };
 }

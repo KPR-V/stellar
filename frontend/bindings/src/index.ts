@@ -31,12 +31,15 @@ if (typeof window !== 'undefined') {
 }
 
 
-export const networks = {
-  testnet: {
-    networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE",
-  }
-} as const
+
+
+export const DEXError = {
+  1: {message:"InsufficientLiquidity"},
+  2: {message:"SlippageExceeded"},
+  3: {message:"DeadlineExceeded"},
+  4: {message:"TokenApprovalFailed"},
+  5: {message:"SwapFailed"}
+}
 
 
 export interface SwapResult {
@@ -55,14 +58,6 @@ export interface PairInfo {
 }
 
 
-export interface TradingVenue {
-  dex_address: string;
-  enabled: boolean;
-  fee_bps: u32;
-  min_liquidity: i128;
-}
-
-
 export interface ArbitrageConfig {
   enabled: boolean;
   max_gas_price: i128;
@@ -74,10 +69,11 @@ export interface ArbitrageConfig {
 
 
 export interface StablecoinPair {
+  base_asset_address: string;
+  base_asset_symbol: string;
   deviation_threshold_bps: u32;
-  fiat_symbol: string;
-  stablecoin_address: string;
-  stablecoin_symbol: string;
+  quote_asset_address: string;
+  quote_asset_symbol: string;
   target_peg: i128;
 }
 
@@ -111,6 +107,12 @@ export interface OracleSource {
 export type OracleType = {tag: "Forex", values: void} | {tag: "Crypto", values: void} | {tag: "Stellar", values: void};
 
 export type AssetType = {tag: "Symbol", values: void} | {tag: "Address", values: void};
+
+
+export interface PriceData {
+  price: i128;
+  timestamp: u64;
+}
 
 
 export interface RiskConfiguration {
@@ -215,7 +217,6 @@ export interface TradingVenue {
 export interface Client {
   /**
    * Construct and simulate a initialize_testnet transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Initialize with testnet oracles (one-time setup)
    */
   initialize_testnet: ({admin, config, risk_manager}: {admin: string, config: ArbitrageConfig, risk_manager: string}, options?: {
     /**
@@ -236,7 +237,6 @@ export interface Client {
 
   /**
    * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Initialize the arbitrage bot with full configuration
    */
   initialize: ({admin, config, forex_oracle, crypto_oracle, stellar_oracle, risk_manager}: {admin: string, config: ArbitrageConfig, forex_oracle: string, crypto_oracle: string, stellar_oracle: string, risk_manager: string}, options?: {
     /**
@@ -257,7 +257,6 @@ export interface Client {
 
   /**
    * Construct and simulate a initialize_user_account transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Initialize user account for individual resource management
    */
   initialize_user_account: ({user, initial_config, risk_limits}: {user: string, initial_config: ArbitrageConfig, risk_limits: RiskLimits}, options?: {
     /**
@@ -278,7 +277,6 @@ export interface Client {
 
   /**
    * Construct and simulate a deposit_user_funds transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * User deposits funds into their personal trading account
    */
   deposit_user_funds: ({user, token_address, amount}: {user: string, token_address: string, amount: i128}, options?: {
     /**
@@ -299,7 +297,6 @@ export interface Client {
 
   /**
    * Construct and simulate a withdraw_user_funds transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * User withdraws funds from their personal trading account
    */
   withdraw_user_funds: ({user, token_address, amount}: {user: string, token_address: string, amount: i128}, options?: {
     /**
@@ -320,7 +317,6 @@ export interface Client {
 
   /**
    * Construct and simulate a execute_user_arbitrage transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Execute an arbitrage trade using a user's individual funds
    */
   execute_user_arbitrage: ({user, opportunity, trade_amount, venue_address}: {user: string, opportunity: EnhancedArbitrageOpportunity, trade_amount: i128, venue_address: string}, options?: {
     /**
@@ -341,7 +337,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_performance_metrics transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get a specific user's performance metrics
    */
   get_user_performance_metrics: ({user, days}: {user: string, days: u32}, options?: {
     /**
@@ -362,7 +357,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_balances transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get a user's personal balances
    */
   get_user_balances: ({user}: {user: string}, options?: {
     /**
@@ -383,7 +377,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get a user's personal trading configuration
    */
   get_user_config: ({user}: {user: string}, options?: {
     /**
@@ -404,7 +397,6 @@ export interface Client {
 
   /**
    * Construct and simulate a update_user_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Update a user's personal trading configuration
    */
   update_user_config: ({user, new_config}: {user: string, new_config: ArbitrageConfig}, options?: {
     /**
@@ -425,7 +417,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_trade_history transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get a user's personal trade history
    */
   get_user_trade_history: ({user, limit}: {user: string, limit: u32}, options?: {
     /**
@@ -446,7 +437,6 @@ export interface Client {
 
   /**
    * Construct and simulate a set_dao_governance transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Set the DAO governance contract address (admin only, one-time)
    */
   set_dao_governance: ({admin, dao_address}: {admin: string, dao_address: string}, options?: {
     /**
@@ -467,7 +457,6 @@ export interface Client {
 
   /**
    * Construct and simulate a update_config_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Update config via DAO proposal
    */
   update_config_dao: ({caller, new_config}: {caller: string, new_config: ArbitrageConfig}, options?: {
     /**
@@ -488,7 +477,6 @@ export interface Client {
 
   /**
    * Construct and simulate a add_enhanced_pair_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Add trading pair via DAO proposal
    */
   add_enhanced_pair_dao: ({caller, pair}: {caller: string, pair: EnhancedStablecoinPair}, options?: {
     /**
@@ -509,7 +497,6 @@ export interface Client {
 
   /**
    * Construct and simulate a add_trading_venue_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Add trading venue via DAO proposal
    */
   add_trading_venue_dao: ({caller, venue}: {caller: string, venue: TradingVenue}, options?: {
     /**
@@ -530,7 +517,6 @@ export interface Client {
 
   /**
    * Construct and simulate a pause_pair_dao transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Pause pair via DAO proposal
    */
   pause_pair_dao: ({caller, stablecoin_symbol}: {caller: string, stablecoin_symbol: string}, options?: {
     /**
@@ -551,7 +537,6 @@ export interface Client {
 
   /**
    * Construct and simulate a add_keeper transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Add keeper role (admin only)
    */
   add_keeper: ({caller, keeper}: {caller: string, keeper: string}, options?: {
     /**
@@ -572,7 +557,6 @@ export interface Client {
 
   /**
    * Construct and simulate a transfer_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Transfer admin role to a new address
    */
   transfer_admin: ({current_admin, new_admin}: {current_admin: string, new_admin: string}, options?: {
     /**
@@ -593,7 +577,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get the current admin address
    */
   get_admin: (options?: {
     /**
@@ -614,7 +597,6 @@ export interface Client {
 
   /**
    * Construct and simulate a add_enhanced_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Add enhanced trading pair with oracle preferences (admin only)
    */
   add_enhanced_pair: ({caller, pair}: {caller: string, pair: EnhancedStablecoinPair}, options?: {
     /**
@@ -635,7 +617,6 @@ export interface Client {
 
   /**
    * Construct and simulate a add_trading_venue transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Add a trading venue (admin only)
    */
   add_trading_venue: ({caller, venue}: {caller: string, venue: TradingVenue}, options?: {
     /**
@@ -656,7 +637,6 @@ export interface Client {
 
   /**
    * Construct and simulate a scan_advanced_opportunities transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Scan for arbitrage opportunities across all configured pairs
    */
   scan_advanced_opportunities: (options?: {
     /**
@@ -677,7 +657,6 @@ export interface Client {
 
   /**
    * Construct and simulate a execute_enhanced_arbitrage transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Execute an arbitrage trade using shared/global funds
    */
   execute_enhanced_arbitrage: ({caller, opportunity, trade_amount, venue_address}: {caller: string, opportunity: EnhancedArbitrageOpportunity, trade_amount: i128, venue_address: string}, options?: {
     /**
@@ -698,7 +677,6 @@ export interface Client {
 
   /**
    * Construct and simulate a pause_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Pause a specific trading pair (admin only)
    */
   pause_pair: ({caller, stablecoin_symbol}: {caller: string, stablecoin_symbol: string}, options?: {
     /**
@@ -719,7 +697,6 @@ export interface Client {
 
   /**
    * Construct and simulate a get_performance_metrics transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Get global performance metrics
    */
   get_performance_metrics: ({days}: {days: u32}, options?: {
     /**
@@ -898,6 +875,106 @@ export interface Client {
     simulate?: boolean;
   }) => Promise<AssembledTransaction<Array<TradeExecution>>>
 
+  /**
+   * Construct and simulate a add_crypto_to_crypto_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  add_crypto_to_crypto_pair: ({caller, base_crypto, quote_crypto, base_address, quote_address, deviation_threshold}: {caller: string, base_crypto: string, quote_crypto: string, base_address: string, quote_address: string, deviation_threshold: u32}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a debug_test_oracle transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  debug_test_oracle: ({oracle_address, symbol, asset_type}: {oracle_address: string, symbol: string, asset_type: AssetType}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Option<PriceData>>>
+
+  /**
+   * Construct and simulate a debug_evaluate_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  debug_evaluate_pair: ({pair_index}: {pair_index: u32}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Option<EnhancedArbitrageOpportunity>>>
+
+  /**
+   * Construct and simulate a debug_get_price_sources transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  debug_get_price_sources: ({pair_index}: {pair_index: u32}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Option<PriceSources>>>
+
+  /**
+   * Construct and simulate a debug_fetch_prices transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  debug_fetch_prices: ({fiat_symbol, stablecoin_symbol, price_sources}: {fiat_symbol: string, stablecoin_symbol: string, price_sources: PriceSources}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<readonly [Option<PriceData>, Option<PriceData>]>>
+
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -912,38 +989,38 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.arguments(null, options)
+    return ContractClient.deploy(null, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAQAAAAAAAAAAAAAAClN3YXBSZXN1bHQAAAAAAAQAAAAAAAAACmFtb3VudF9vdXQAAAAAAAsAAAAAAAAACWZlZXNfcGFpZAAAAAAAAAsAAAAAAAAAEHByaWNlX2ltcGFjdF9icHMAAAAEAAAAAAAAAAdzdWNjZXNzAAAAAAE=",
+      new ContractSpec([ "AAAABAAAAAAAAAAAAAAACERFWEVycm9yAAAABQAAAAAAAAAVSW5zdWZmaWNpZW50TGlxdWlkaXR5AAAAAAAAAQAAAAAAAAAQU2xpcHBhZ2VFeGNlZWRlZAAAAAIAAAAAAAAAEERlYWRsaW5lRXhjZWVkZWQAAAADAAAAAAAAABNUb2tlbkFwcHJvdmFsRmFpbGVkAAAAAAQAAAAAAAAAClN3YXBGYWlsZWQAAAAAAAU=",
+        "AAAAAQAAAAAAAAAAAAAAClN3YXBSZXN1bHQAAAAAAAQAAAAAAAAACmFtb3VudF9vdXQAAAAAAAsAAAAAAAAACWZlZXNfcGFpZAAAAAAAAAsAAAAAAAAAEHByaWNlX2ltcGFjdF9icHMAAAAEAAAAAAAAAAdzdWNjZXNzAAAAAAE=",
         "AAAAAQAAAAAAAAAAAAAACFBhaXJJbmZvAAAABAAAAAAAAAAHZmVlX2JwcwAAAAAEAAAAAAAAAAtsYXN0X3VwZGF0ZQAAAAAGAAAAAAAAAAlyZXNlcnZlX2EAAAAAAAALAAAAAAAAAAlyZXNlcnZlX2IAAAAAAAAL",
-        "AAAAAQAAAAAAAAAAAAAADFRyYWRpbmdWZW51ZQAAAAQAAAAAAAAAC2RleF9hZGRyZXNzAAAAABMAAAAAAAAAB2VuYWJsZWQAAAAAAQAAAAAAAAAHZmVlX2JwcwAAAAAEAAAAAAAAAA1taW5fbGlxdWlkaXR5AAAAAAAACw==",
-        "AAAAAAAAADBJbml0aWFsaXplIHdpdGggdGVzdG5ldCBvcmFjbGVzIChvbmUtdGltZSBzZXR1cCkAAAASaW5pdGlhbGl6ZV90ZXN0bmV0AAAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABmNvbmZpZwAAAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcAAAAAAAAAAAxyaXNrX21hbmFnZXIAAAATAAAAAA==",
-        "AAAAAAAAADRJbml0aWFsaXplIHRoZSBhcmJpdHJhZ2UgYm90IHdpdGggZnVsbCBjb25maWd1cmF0aW9uAAAACmluaXRpYWxpemUAAAAAAAYAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAGY29uZmlnAAAAAAfQAAAAD0FyYml0cmFnZUNvbmZpZwAAAAAAAAAADGZvcmV4X29yYWNsZQAAABMAAAAAAAAADWNyeXB0b19vcmFjbGUAAAAAAAATAAAAAAAAAA5zdGVsbGFyX29yYWNsZQAAAAAAEwAAAAAAAAAMcmlza19tYW5hZ2VyAAAAEwAAAAA=",
-        "AAAAAAAAADpJbml0aWFsaXplIHVzZXIgYWNjb3VudCBmb3IgaW5kaXZpZHVhbCByZXNvdXJjZSBtYW5hZ2VtZW50AAAAAAAXaW5pdGlhbGl6ZV91c2VyX2FjY291bnQAAAAAAwAAAAAAAAAEdXNlcgAAABMAAAAAAAAADmluaXRpYWxfY29uZmlnAAAAAAfQAAAAD0FyYml0cmFnZUNvbmZpZwAAAAAAAAAAC3Jpc2tfbGltaXRzAAAAB9AAAAAKUmlza0xpbWl0cwAAAAAAAA==",
-        "AAAAAAAAADdVc2VyIGRlcG9zaXRzIGZ1bmRzIGludG8gdGhlaXIgcGVyc29uYWwgdHJhZGluZyBhY2NvdW50AAAAABJkZXBvc2l0X3VzZXJfZnVuZHMAAAAAAAMAAAAAAAAABHVzZXIAAAATAAAAAAAAAA10b2tlbl9hZGRyZXNzAAAAAAAAEwAAAAAAAAAGYW1vdW50AAAAAAALAAAAAA==",
-        "AAAAAAAAADhVc2VyIHdpdGhkcmF3cyBmdW5kcyBmcm9tIHRoZWlyIHBlcnNvbmFsIHRyYWRpbmcgYWNjb3VudAAAABN3aXRoZHJhd191c2VyX2Z1bmRzAAAAAAMAAAAAAAAABHVzZXIAAAATAAAAAAAAAA10b2tlbl9hZGRyZXNzAAAAAAAAEwAAAAAAAAAGYW1vdW50AAAAAAALAAAAAA==",
-        "AAAAAAAAADpFeGVjdXRlIGFuIGFyYml0cmFnZSB0cmFkZSB1c2luZyBhIHVzZXIncyBpbmRpdmlkdWFsIGZ1bmRzAAAAAAAWZXhlY3V0ZV91c2VyX2FyYml0cmFnZQAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAAC29wcG9ydHVuaXR5AAAAB9AAAAAcRW5oYW5jZWRBcmJpdHJhZ2VPcHBvcnR1bml0eQAAAAAAAAAMdHJhZGVfYW1vdW50AAAACwAAAAAAAAANdmVudWVfYWRkcmVzcwAAAAAAABMAAAABAAAH0AAAAA5UcmFkZUV4ZWN1dGlvbgAA",
-        "AAAAAAAAAClHZXQgYSBzcGVjaWZpYyB1c2VyJ3MgcGVyZm9ybWFuY2UgbWV0cmljcwAAAAAAABxnZXRfdXNlcl9wZXJmb3JtYW5jZV9tZXRyaWNzAAAAAgAAAAAAAAAEdXNlcgAAABMAAAAAAAAABGRheXMAAAAEAAAAAQAAB9AAAAASUGVyZm9ybWFuY2VNZXRyaWNzAAA=",
-        "AAAAAAAAAB5HZXQgYSB1c2VyJ3MgcGVyc29uYWwgYmFsYW5jZXMAAAAAABFnZXRfdXNlcl9iYWxhbmNlcwAAAAAAAAEAAAAAAAAABHVzZXIAAAATAAAAAQAAA+wAAAATAAAACw==",
-        "AAAAAAAAACtHZXQgYSB1c2VyJ3MgcGVyc29uYWwgdHJhZGluZyBjb25maWd1cmF0aW9uAAAAAA9nZXRfdXNlcl9jb25maWcAAAAAAQAAAAAAAAAEdXNlcgAAABMAAAABAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcA",
-        "AAAAAAAAAC5VcGRhdGUgYSB1c2VyJ3MgcGVyc29uYWwgdHJhZGluZyBjb25maWd1cmF0aW9uAAAAAAASdXBkYXRlX3VzZXJfY29uZmlnAAAAAAACAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAKbmV3X2NvbmZpZwAAAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcAAAAAAA==",
-        "AAAAAAAAACNHZXQgYSB1c2VyJ3MgcGVyc29uYWwgdHJhZGUgaGlzdG9yeQAAAAAWZ2V0X3VzZXJfdHJhZGVfaGlzdG9yeQAAAAAAAgAAAAAAAAAEdXNlcgAAABMAAAAAAAAABWxpbWl0AAAAAAAABAAAAAEAAAPqAAAH0AAAAA5UcmFkZUV4ZWN1dGlvbgAA",
-        "AAAAAAAAAD5TZXQgdGhlIERBTyBnb3Zlcm5hbmNlIGNvbnRyYWN0IGFkZHJlc3MgKGFkbWluIG9ubHksIG9uZS10aW1lKQAAAAAAEnNldF9kYW9fZ292ZXJuYW5jZQAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAtkYW9fYWRkcmVzcwAAAAATAAAAAA==",
-        "AAAAAAAAAB5VcGRhdGUgY29uZmlnIHZpYSBEQU8gcHJvcG9zYWwAAAAAABF1cGRhdGVfY29uZmlnX2RhbwAAAAAAAAIAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAAKbmV3X2NvbmZpZwAAAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcAAAAAAA==",
-        "AAAAAAAAACFBZGQgdHJhZGluZyBwYWlyIHZpYSBEQU8gcHJvcG9zYWwAAAAAAAAVYWRkX2VuaGFuY2VkX3BhaXJfZGFvAAAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAARwYWlyAAAH0AAAABZFbmhhbmNlZFN0YWJsZWNvaW5QYWlyAAAAAAAA",
-        "AAAAAAAAACJBZGQgdHJhZGluZyB2ZW51ZSB2aWEgREFPIHByb3Bvc2FsAAAAAAAVYWRkX3RyYWRpbmdfdmVudWVfZGFvAAAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAAV2ZW51ZQAAAAAAB9AAAAAMVHJhZGluZ1ZlbnVlAAAAAA==",
-        "AAAAAAAAABtQYXVzZSBwYWlyIHZpYSBEQU8gcHJvcG9zYWwAAAAADnBhdXNlX3BhaXJfZGFvAAAAAAACAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAAEXN0YWJsZWNvaW5fc3ltYm9sAAAAAAAAEQAAAAA=",
-        "AAAAAAAAABxBZGQga2VlcGVyIHJvbGUgKGFkbWluIG9ubHkpAAAACmFkZF9rZWVwZXIAAAAAAAIAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAAGa2VlcGVyAAAAAAATAAAAAA==",
-        "AAAAAAAAACRUcmFuc2ZlciBhZG1pbiByb2xlIHRvIGEgbmV3IGFkZHJlc3MAAAAOdHJhbnNmZXJfYWRtaW4AAAAAAAIAAAAAAAAADWN1cnJlbnRfYWRtaW4AAAAAAAATAAAAAAAAAAluZXdfYWRtaW4AAAAAAAATAAAAAA==",
-        "AAAAAAAAAB1HZXQgdGhlIGN1cnJlbnQgYWRtaW4gYWRkcmVzcwAAAAAAAAlnZXRfYWRtaW4AAAAAAAAAAAAAAQAAABM=",
-        "AAAAAAAAAD5BZGQgZW5oYW5jZWQgdHJhZGluZyBwYWlyIHdpdGggb3JhY2xlIHByZWZlcmVuY2VzIChhZG1pbiBvbmx5KQAAAAAAEWFkZF9lbmhhbmNlZF9wYWlyAAAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAARwYWlyAAAH0AAAABZFbmhhbmNlZFN0YWJsZWNvaW5QYWlyAAAAAAAA",
-        "AAAAAAAAACBBZGQgYSB0cmFkaW5nIHZlbnVlIChhZG1pbiBvbmx5KQAAABFhZGRfdHJhZGluZ192ZW51ZQAAAAAAAAIAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAAFdmVudWUAAAAAAAfQAAAADFRyYWRpbmdWZW51ZQAAAAA=",
-        "AAAAAAAAADxTY2FuIGZvciBhcmJpdHJhZ2Ugb3Bwb3J0dW5pdGllcyBhY3Jvc3MgYWxsIGNvbmZpZ3VyZWQgcGFpcnMAAAAbc2Nhbl9hZHZhbmNlZF9vcHBvcnR1bml0aWVzAAAAAAAAAAABAAAD6gAAB9AAAAAcRW5oYW5jZWRBcmJpdHJhZ2VPcHBvcnR1bml0eQ==",
-        "AAAAAAAAADRFeGVjdXRlIGFuIGFyYml0cmFnZSB0cmFkZSB1c2luZyBzaGFyZWQvZ2xvYmFsIGZ1bmRzAAAAGmV4ZWN1dGVfZW5oYW5jZWRfYXJiaXRyYWdlAAAAAAAEAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAAC29wcG9ydHVuaXR5AAAAB9AAAAAcRW5oYW5jZWRBcmJpdHJhZ2VPcHBvcnR1bml0eQAAAAAAAAAMdHJhZGVfYW1vdW50AAAACwAAAAAAAAANdmVudWVfYWRkcmVzcwAAAAAAABMAAAABAAAH0AAAAA5UcmFkZUV4ZWN1dGlvbgAA",
-        "AAAAAAAAACpQYXVzZSBhIHNwZWNpZmljIHRyYWRpbmcgcGFpciAoYWRtaW4gb25seSkAAAAAAApwYXVzZV9wYWlyAAAAAAACAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAAEXN0YWJsZWNvaW5fc3ltYm9sAAAAAAAAEQAAAAA=",
-        "AAAAAAAAAB5HZXQgZ2xvYmFsIHBlcmZvcm1hbmNlIG1ldHJpY3MAAAAAABdnZXRfcGVyZm9ybWFuY2VfbWV0cmljcwAAAAABAAAAAAAAAARkYXlzAAAABAAAAAEAAAfQAAAAElBlcmZvcm1hbmNlTWV0cmljcwAA",
+        "AAAAAAAAAAAAAAASaW5pdGlhbGl6ZV90ZXN0bmV0AAAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABmNvbmZpZwAAAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcAAAAAAAAAAAxyaXNrX21hbmFnZXIAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAKaW5pdGlhbGl6ZQAAAAAABgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAZjb25maWcAAAAAB9AAAAAPQXJiaXRyYWdlQ29uZmlnAAAAAAAAAAAMZm9yZXhfb3JhY2xlAAAAEwAAAAAAAAANY3J5cHRvX29yYWNsZQAAAAAAABMAAAAAAAAADnN0ZWxsYXJfb3JhY2xlAAAAAAATAAAAAAAAAAxyaXNrX21hbmFnZXIAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAXaW5pdGlhbGl6ZV91c2VyX2FjY291bnQAAAAAAwAAAAAAAAAEdXNlcgAAABMAAAAAAAAADmluaXRpYWxfY29uZmlnAAAAAAfQAAAAD0FyYml0cmFnZUNvbmZpZwAAAAAAAAAAC3Jpc2tfbGltaXRzAAAAB9AAAAAKUmlza0xpbWl0cwAAAAAAAA==",
+        "AAAAAAAAAAAAAAASZGVwb3NpdF91c2VyX2Z1bmRzAAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAANdG9rZW5fYWRkcmVzcwAAAAAAABMAAAAAAAAABmFtb3VudAAAAAAACwAAAAA=",
+        "AAAAAAAAAAAAAAATd2l0aGRyYXdfdXNlcl9mdW5kcwAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAANdG9rZW5fYWRkcmVzcwAAAAAAABMAAAAAAAAABmFtb3VudAAAAAAACwAAAAA=",
+        "AAAAAAAAAAAAAAAWZXhlY3V0ZV91c2VyX2FyYml0cmFnZQAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAAC29wcG9ydHVuaXR5AAAAB9AAAAAcRW5oYW5jZWRBcmJpdHJhZ2VPcHBvcnR1bml0eQAAAAAAAAAMdHJhZGVfYW1vdW50AAAACwAAAAAAAAANdmVudWVfYWRkcmVzcwAAAAAAABMAAAABAAAH0AAAAA5UcmFkZUV4ZWN1dGlvbgAA",
+        "AAAAAAAAAAAAAAAcZ2V0X3VzZXJfcGVyZm9ybWFuY2VfbWV0cmljcwAAAAIAAAAAAAAABHVzZXIAAAATAAAAAAAAAARkYXlzAAAABAAAAAEAAAfQAAAAElBlcmZvcm1hbmNlTWV0cmljcwAA",
+        "AAAAAAAAAAAAAAARZ2V0X3VzZXJfYmFsYW5jZXMAAAAAAAABAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAPsAAAAEwAAAAs=",
+        "AAAAAAAAAAAAAAAPZ2V0X3VzZXJfY29uZmlnAAAAAAEAAAAAAAAABHVzZXIAAAATAAAAAQAAB9AAAAAPQXJiaXRyYWdlQ29uZmlnAA==",
+        "AAAAAAAAAAAAAAASdXBkYXRlX3VzZXJfY29uZmlnAAAAAAACAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAKbmV3X2NvbmZpZwAAAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcAAAAAAA==",
+        "AAAAAAAAAAAAAAAWZ2V0X3VzZXJfdHJhZGVfaGlzdG9yeQAAAAAAAgAAAAAAAAAEdXNlcgAAABMAAAAAAAAABWxpbWl0AAAAAAAABAAAAAEAAAPqAAAH0AAAAA5UcmFkZUV4ZWN1dGlvbgAA",
+        "AAAAAAAAAAAAAAASc2V0X2Rhb19nb3Zlcm5hbmNlAAAAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAC2Rhb19hZGRyZXNzAAAAABMAAAAA",
+        "AAAAAAAAAAAAAAARdXBkYXRlX2NvbmZpZ19kYW8AAAAAAAACAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAACm5ld19jb25maWcAAAAAB9AAAAAPQXJiaXRyYWdlQ29uZmlnAAAAAAA=",
+        "AAAAAAAAAAAAAAAVYWRkX2VuaGFuY2VkX3BhaXJfZGFvAAAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAARwYWlyAAAH0AAAABZFbmhhbmNlZFN0YWJsZWNvaW5QYWlyAAAAAAAA",
+        "AAAAAAAAAAAAAAAVYWRkX3RyYWRpbmdfdmVudWVfZGFvAAAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAAV2ZW51ZQAAAAAAB9AAAAAMVHJhZGluZ1ZlbnVlAAAAAA==",
+        "AAAAAAAAAAAAAAAOcGF1c2VfcGFpcl9kYW8AAAAAAAIAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAARc3RhYmxlY29pbl9zeW1ib2wAAAAAAAARAAAAAA==",
+        "AAAAAAAAAAAAAAAKYWRkX2tlZXBlcgAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAAZrZWVwZXIAAAAAABMAAAAA",
+        "AAAAAAAAAAAAAAAOdHJhbnNmZXJfYWRtaW4AAAAAAAIAAAAAAAAADWN1cnJlbnRfYWRtaW4AAAAAAAATAAAAAAAAAAluZXdfYWRtaW4AAAAAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAJZ2V0X2FkbWluAAAAAAAAAAAAAAEAAAAT",
+        "AAAAAAAAAAAAAAARYWRkX2VuaGFuY2VkX3BhaXIAAAAAAAACAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAABHBhaXIAAAfQAAAAFkVuaGFuY2VkU3RhYmxlY29pblBhaXIAAAAAAAA=",
+        "AAAAAAAAAAAAAAARYWRkX3RyYWRpbmdfdmVudWUAAAAAAAACAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAABXZlbnVlAAAAAAAH0AAAAAxUcmFkaW5nVmVudWUAAAAA",
+        "AAAAAAAAAAAAAAAbc2Nhbl9hZHZhbmNlZF9vcHBvcnR1bml0aWVzAAAAAAAAAAABAAAD6gAAB9AAAAAcRW5oYW5jZWRBcmJpdHJhZ2VPcHBvcnR1bml0eQ==",
+        "AAAAAAAAAAAAAAAaZXhlY3V0ZV9lbmhhbmNlZF9hcmJpdHJhZ2UAAAAAAAQAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAALb3Bwb3J0dW5pdHkAAAAH0AAAABxFbmhhbmNlZEFyYml0cmFnZU9wcG9ydHVuaXR5AAAAAAAAAAx0cmFkZV9hbW91bnQAAAALAAAAAAAAAA12ZW51ZV9hZGRyZXNzAAAAAAAAEwAAAAEAAAfQAAAADlRyYWRlRXhlY3V0aW9uAAA=",
+        "AAAAAAAAAAAAAAAKcGF1c2VfcGFpcgAAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAABFzdGFibGVjb2luX3N5bWJvbAAAAAAAABEAAAAA",
+        "AAAAAAAAAAAAAAAXZ2V0X3BlcmZvcm1hbmNlX21ldHJpY3MAAAAAAQAAAAAAAAAEZGF5cwAAAAQAAAABAAAH0AAAABJQZXJmb3JtYW5jZU1ldHJpY3MAAA==",
         "AAAAAAAAAAAAAAAIYWRkX3BhaXIAAAACAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAABHBhaXIAAAfQAAAADlN0YWJsZWNvaW5QYWlyAAAAAAAA",
         "AAAAAAAAAAAAAAASc2Nhbl9vcHBvcnR1bml0aWVzAAAAAAAAAAAAAQAAA+oAAAfQAAAAFEFyYml0cmFnZU9wcG9ydHVuaXR5",
         "AAAAAAAAAAAAAAARZXhlY3V0ZV9hcmJpdHJhZ2UAAAAAAAADAAAAAAAAAAZjYWxsZXIAAAAAABMAAAAAAAAAC29wcG9ydHVuaXR5AAAAB9AAAAAUQXJiaXRyYWdlT3Bwb3J0dW5pdHkAAAAAAAAADHRyYWRlX2Ftb3VudAAAAAsAAAABAAAH0AAAAA5UcmFkZUV4ZWN1dGlvbgAA",
@@ -952,8 +1029,13 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAOZW1lcmdlbmN5X3N0b3AAAAAAAAEAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAJZ2V0X3BhaXJzAAAAAAAAAAAAAAEAAAPqAAAH0AAAAA5TdGFibGVjb2luUGFpcgAA",
         "AAAAAAAAAAAAAAARZ2V0X3RyYWRlX2hpc3RvcnkAAAAAAAABAAAAAAAAAAVsaW1pdAAAAAAAAAQAAAABAAAD6gAAB9AAAAAOVHJhZGVFeGVjdXRpb24AAA==",
+        "AAAAAAAAAAAAAAAZYWRkX2NyeXB0b190b19jcnlwdG9fcGFpcgAAAAAAAAYAAAAAAAAABmNhbGxlcgAAAAAAEwAAAAAAAAALYmFzZV9jcnlwdG8AAAAAEQAAAAAAAAAMcXVvdGVfY3J5cHRvAAAAEQAAAAAAAAAMYmFzZV9hZGRyZXNzAAAAEwAAAAAAAAANcXVvdGVfYWRkcmVzcwAAAAAAABMAAAAAAAAAE2RldmlhdGlvbl90aHJlc2hvbGQAAAAABAAAAAA=",
+        "AAAAAAAAAAAAAAARZGVidWdfdGVzdF9vcmFjbGUAAAAAAAADAAAAAAAAAA5vcmFjbGVfYWRkcmVzcwAAAAAAEwAAAAAAAAAGc3ltYm9sAAAAAAARAAAAAAAAAAphc3NldF90eXBlAAAAAAfQAAAACUFzc2V0VHlwZQAAAAAAAAEAAAPoAAAH0AAAAAlQcmljZURhdGEAAAA=",
+        "AAAAAAAAAAAAAAATZGVidWdfZXZhbHVhdGVfcGFpcgAAAAABAAAAAAAAAApwYWlyX2luZGV4AAAAAAAEAAAAAQAAA+gAAAfQAAAAHEVuaGFuY2VkQXJiaXRyYWdlT3Bwb3J0dW5pdHk=",
+        "AAAAAAAAAAAAAAAXZGVidWdfZ2V0X3ByaWNlX3NvdXJjZXMAAAAAAQAAAAAAAAAKcGFpcl9pbmRleAAAAAAABAAAAAEAAAPoAAAH0AAAAAxQcmljZVNvdXJjZXM=",
+        "AAAAAAAAAAAAAAASZGVidWdfZmV0Y2hfcHJpY2VzAAAAAAADAAAAAAAAAAtmaWF0X3N5bWJvbAAAAAARAAAAAAAAABFzdGFibGVjb2luX3N5bWJvbAAAAAAAABEAAAAAAAAADXByaWNlX3NvdXJjZXMAAAAAAAfQAAAADFByaWNlU291cmNlcwAAAAEAAAPtAAAAAgAAA+gAAAfQAAAACVByaWNlRGF0YQAAAAAAA+gAAAfQAAAACVByaWNlRGF0YQAAAA==",
         "AAAAAQAAAAAAAAAAAAAAD0FyYml0cmFnZUNvbmZpZwAAAAAGAAAAAAAAAAdlbmFibGVkAAAAAAEAAAAAAAAADW1heF9nYXNfcHJpY2UAAAAAAAALAAAAAAAAAA5tYXhfdHJhZGVfc2l6ZQAAAAAACwAAAAAAAAANbWluX2xpcXVpZGl0eQAAAAAAAAsAAAAAAAAADm1pbl9wcm9maXRfYnBzAAAAAAAEAAAAAAAAABZzbGlwcGFnZV90b2xlcmFuY2VfYnBzAAAAAAAE",
-        "AAAAAQAAAAAAAAAAAAAADlN0YWJsZWNvaW5QYWlyAAAAAAAFAAAAAAAAABdkZXZpYXRpb25fdGhyZXNob2xkX2JwcwAAAAAEAAAAAAAAAAtmaWF0X3N5bWJvbAAAAAARAAAAAAAAABJzdGFibGVjb2luX2FkZHJlc3MAAAAAABMAAAAAAAAAEXN0YWJsZWNvaW5fc3ltYm9sAAAAAAAAEQAAAAAAAAAKdGFyZ2V0X3BlZwAAAAAACw==",
+        "AAAAAQAAAAAAAAAAAAAADlN0YWJsZWNvaW5QYWlyAAAAAAAGAAAAAAAAABJiYXNlX2Fzc2V0X2FkZHJlc3MAAAAAABMAAAAAAAAAEWJhc2VfYXNzZXRfc3ltYm9sAAAAAAAAEQAAAAAAAAAXZGV2aWF0aW9uX3RocmVzaG9sZF9icHMAAAAABAAAAAAAAAATcXVvdGVfYXNzZXRfYWRkcmVzcwAAAAATAAAAAAAAABJxdW90ZV9hc3NldF9zeW1ib2wAAAAAABEAAAAAAAAACnRhcmdldF9wZWcAAAAAAAs=",
         "AAAAAQAAAAAAAAAAAAAAFkVuaGFuY2VkU3RhYmxlY29pblBhaXIAAAAAAAYAAAAAAAAABGJhc2UAAAfQAAAADlN0YWJsZWNvaW5QYWlyAAAAAAAAAAAAB2VuYWJsZWQAAAAAAQAAAAAAAAAKZmVlX2NvbmZpZwAAAAAH0AAAABBGZWVDb25maWd1cmF0aW9uAAAAAAAAAA1wcmljZV9zb3VyY2VzAAAAAAAH0AAAAAxQcmljZVNvdXJjZXMAAAAAAAAAC3Jpc2tfY29uZmlnAAAAB9AAAAARUmlza0NvbmZpZ3VyYXRpb24AAAAAAAAAAAAAC3R3YXBfY29uZmlnAAAAB9AAAAARVFdBUENvbmZpZ3VyYXRpb24AAAA=",
         "AAAAAQAAAAAAAAAAAAAADFByaWNlU291cmNlcwAAAAQAAAAAAAAAEGZhbGxiYWNrX2VuYWJsZWQAAAABAAAAAAAAAAxmaWF0X3NvdXJjZXMAAAPqAAAH0AAAAAxPcmFjbGVTb3VyY2UAAAAAAAAAFG1pbl9zb3VyY2VzX3JlcXVpcmVkAAAABAAAAAAAAAASc3RhYmxlY29pbl9zb3VyY2VzAAAAAAPqAAAH0AAAAAxPcmFjbGVTb3VyY2U=",
         "AAAAAQAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAUAAAAAAAAAB2FkZHJlc3MAAAAD6AAAABMAAAAAAAAACmFzc2V0X3R5cGUAAAAAB9AAAAAJQXNzZXRUeXBlAAAAAAAAAAAAAA9tYXhfYWdlX3NlY29uZHMAAAAABgAAAAAAAAALb3JhY2xlX3R5cGUAAAAH0AAAAApPcmFjbGVUeXBlAAAAAAAAAAAACHByaW9yaXR5AAAABA==",
@@ -1007,6 +1089,11 @@ export class Client extends ContractClient {
         update_config: this.txFromJSON<null>,
         emergency_stop: this.txFromJSON<null>,
         get_pairs: this.txFromJSON<Array<StablecoinPair>>,
-        get_trade_history: this.txFromJSON<Array<TradeExecution>>
+        get_trade_history: this.txFromJSON<Array<TradeExecution>>,
+        add_crypto_to_crypto_pair: this.txFromJSON<null>,
+        debug_test_oracle: this.txFromJSON<Option<PriceData>>,
+        debug_evaluate_pair: this.txFromJSON<Option<EnhancedArbitrageOpportunity>>,
+        debug_get_price_sources: this.txFromJSON<Option<PriceSources>>,
+        debug_fetch_prices: this.txFromJSON<readonly [Option<PriceData>, Option<PriceData>]>
   }
 }

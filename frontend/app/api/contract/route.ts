@@ -505,13 +505,13 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
           // Check if this opportunity has the token we're looking for
           let priceData: { price: string, symbol: string } | null = null;
           
-          if (pair.stablecoin_symbol === tokenSymbol) {
+          if (pair.base_asset_symbol === tokenSymbol) {
             priceData = {
               price: opp.base_opportunity.stablecoin_price.toString(),
               symbol: tokenSymbol
             };
-          } else if (pair.fiat_symbol === tokenSymbol || 
-                    (tokenSymbol === 'EURC' && pair.fiat_symbol === 'EUR')) {
+          } else if (pair.quote_asset_symbol === tokenSymbol || 
+                    (tokenSymbol === 'EURC' && pair.quote_asset_symbol === 'EUR')) {
             priceData = {
               price: opp.base_opportunity.fiat_rate.toString(),
               symbol: tokenSymbol === 'EURC' ? 'EUR' : tokenSymbol
@@ -1305,9 +1305,7 @@ async function executeUserArbitrage(
       venueAddress
     });
 
-    // Create RPC server for transaction preparation
-    const server = new SorobanRpc.Server(RPC_URL);
-
+    // First, check if user is initialized and has sufficient balance
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -1315,8 +1313,156 @@ async function executeUserArbitrage(
       publicKey: userAddress
     });
 
-    // Convert trade amount to BigInt (assuming it's in the correct scale)
+    // Check user initialization
+    try {
+      const userConfig = await client.get_user_config({
+        user: userAddress
+      }, {
+        simulate: true
+      });
+      console.log('✅ User is initialized. Config retrieved successfully.');
+    } catch (initError) {
+      console.error('❌ User not initialized:', initError);
+      return NextResponse.json({
+        success: false,
+        error: 'User account not initialized',
+        message: 'Please initialize your arbitrage account before executing trades.',
+        details: {
+          action: 'initialize_user_account',
+          suggestion: 'Call the initialize_user_account function first with your trading configuration.'
+        }
+      }, { status: 400 });
+    }
+
+    // Check user balances
+    console.log('🔍 Checking user balances before trade execution...');
+    let userBalances: any = {};
+    try {
+      const balancesResult = await client.get_user_balances({
+        user: userAddress
+      }, {
+        simulate: true
+      });
+      
+      console.log('Raw balances result:', safeStringify(balancesResult.result));
+      userBalances = balancesResult.result || {};
+      
+      // Check if user has any deposits
+      const hasAnyBalance = Object.keys(userBalances).length > 0 && 
+        Object.values(userBalances).some((balance: any) => {
+          const balanceNum = typeof balance === 'bigint' ? Number(balance) : Number(balance || 0);
+          return balanceNum > 0;
+        });
+
+      if (!hasAnyBalance) {
+        // Convert BigInt values to strings for JSON serialization
+        const serializableBalances = Object.fromEntries(
+          Object.entries(userBalances).map(([key, value]) => [
+            key,
+            typeof value === 'bigint' ? value.toString() : String(value || '0')
+          ])
+        );
+
+        return NextResponse.json({
+          success: false,
+          error: 'No funds deposited in arbitrage contract',
+          message: 'You must deposit funds into the arbitrage contract before executing trades. Your contract balance is empty.',
+          details: {
+            action: 'deposit_funds',
+            suggestion: 'Use the deposit function to transfer tokens from your wallet to the arbitrage contract.',
+            currentBalances: serializableBalances
+          }
+        }, { status: 400 });
+      }
+
+      // Balance check passed - user has funds
+      console.log('✅ User has sufficient contract balance. Continuing with arbitrage execution...');
+      console.log('📊 User balances (first 3):', Object.entries(userBalances).slice(0, 3).map(([addr, bal]) => 
+        `${addr.substring(0, 8)}...: ${typeof bal === 'bigint' ? Number(bal) : bal}`
+      ).join(', '));
+
+    } catch (balanceError) {
+      console.error('❌ Error checking user balances:', balanceError);
+      return NextResponse.json({
+        success: false,
+        error: 'Unable to verify user balances',
+        message: 'Could not check your contract balance. This likely means no funds have been deposited or the user is not properly initialized.',
+        details: {
+          action: 'deposit_funds',
+          suggestion: 'Ensure you have deposited funds and are properly initialized.',
+          errorMessage: balanceError instanceof Error ? balanceError.message : 'Unknown balance error'
+        }
+      }, { status: 400 });
+    }
+   const resolveTokenAddress = (opportunity: any, isBase: boolean): string => {
+      const pair = opportunity.base_opportunity.pair;
+      if (isBase) {
+        // For base asset, use the base_asset_address from the pair
+        return pair.base_asset_address || getTokenAddressFromSymbol(pair.base_asset_symbol || pair.stablecoin_symbol);
+      } else {
+        // For quote asset, use the quote_asset_address from the pair
+        return pair.quote_asset_address || getTokenAddressFromSymbol(pair.quote_asset_symbol || pair.fiat_symbol);
+      }
+    };
+    // Determine which token is needed for the trade
     const tradeAmountBigInt = BigInt(tradeAmount);
+    const requiredToken = opportunity.base_opportunity.trade_direction === "BUY" 
+      ? resolveTokenAddress(opportunity, false)  // Need quote asset to buy base
+      : resolveTokenAddress(opportunity, true);   // Need base asset to sell
+
+    console.log(`🎯 Trade direction: ${opportunity.base_opportunity.trade_direction}`);
+    console.log(`🎯 Required token for trade: ${requiredToken}`);
+    console.log(`🎯 Trade amount needed: ${tradeAmount}`);
+
+    // Check specific token balance
+    const userBalanceForToken = userBalances[requiredToken] || 0;
+    const userBalanceNum = typeof userBalanceForToken === 'bigint' ? Number(userBalanceForToken) : Number(userBalanceForToken || 0);
+    const tradeAmountNum = Number(tradeAmount);
+
+    console.log(`💰 User balance for required token: ${userBalanceNum}`);
+    console.log(`💰 Required amount: ${tradeAmountNum}`);
+
+    if (userBalanceNum < tradeAmountNum) {
+      const tokenSymbol = opportunity.base_opportunity.trade_direction === "BUY" 
+        ? (opportunity.base_opportunity.pair.quote_asset_symbol || opportunity.base_opportunity.pair.fiat_symbol)
+        : (opportunity.base_opportunity.pair.base_asset_symbol || opportunity.base_opportunity.pair.stablecoin_symbol);
+      
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient balance for trade',
+        message: `You need ${(tradeAmountNum / 1e7).toFixed(4)} ${tokenSymbol} but only have ${(userBalanceNum / 1e7).toFixed(4)} ${tokenSymbol} deposited in the contract.`,
+        details: {
+          action: 'deposit_funds',
+          requiredToken,
+          tokenSymbol,
+          userBalance: userBalanceNum.toString(),
+          requiredAmount: tradeAmountNum.toString(),
+          shortfall: (tradeAmountNum - userBalanceNum).toString()
+        }
+      }, { status: 400 });
+    }
+
+    console.log('✅ Sufficient balance confirmed. Proceeding with trade execution...');
+
+    // Helper function to get actual token address based on symbol
+    const getTokenAddressFromSymbol = (symbol: string): string => {
+      const tokenMap: { [key: string]: string } = {
+        // Updated with the actual addresses from the event log
+        'XLM': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA', // XLM from event log
+        'USDC': 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // USDC from event log
+        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO', // EURC testnet
+      };
+      return tokenMap[symbol] || tokenMap['XLM']; // Default to XLM if not found
+    };
+
+    // Helper function to resolve token address from opportunity data
+ 
+
+    // Create RPC server for transaction preparation  
+    const server = new SorobanRpc.Server(RPC_URL);
+
+    // Convert trade amount to BigInt (assuming it's in the correct scale)
+    const tradeAmountForContract = BigInt(tradeAmount);
 
     // Helper function to convert string to BigInt safely
     const stringToBigInt = (value: string): bigint => {
@@ -1326,25 +1472,16 @@ async function executeUserArbitrage(
       return BigInt(cleanValue);
     };
 
-    // Helper function to get actual token address based on symbol
-    const getTokenAddressFromSymbol = (symbol: string): string => {
-      const tokenMap: { [key: string]: string } = {
-        'XLM': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA', // XLM testnet
-        'USDC': 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // USDC testnet
-        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO', // EURC testnet
-      };
-      return tokenMap[symbol] || 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA'; // Default to XLM
-    };
-
     // Create a properly structured opportunity for the contract
     // Include all possible TradingVenue fields to satisfy both definitions
     const contractOpportunity = {
       base_opportunity: {
         pair: {
-          stablecoin_symbol: opportunity.base_opportunity.pair.stablecoin_symbol,
-          fiat_symbol: opportunity.base_opportunity.pair.fiat_symbol,
-          stablecoin_address: getTokenAddressFromSymbol(opportunity.base_opportunity.pair.stablecoin_symbol),
-          target_peg: stringToBigInt("10000"), 
+          base_asset_symbol: opportunity.base_opportunity.pair.stablecoin_symbol,
+          quote_asset_symbol: opportunity.base_opportunity.pair.fiat_symbol,
+          target_peg: stringToBigInt("10000"),
+          base_asset_address: resolveTokenAddress(opportunity, true),
+          quote_asset_address: resolveTokenAddress(opportunity, false),
           deviation_threshold_bps: opportunity.base_opportunity.pair.deviation_threshold_bps || 50
         },
         stablecoin_price: stringToBigInt(opportunity.base_opportunity.stablecoin_price),
@@ -1375,7 +1512,7 @@ async function executeUserArbitrage(
     const result = await client.execute_user_arbitrage({
       user: userAddress,
       opportunity: contractOpportunity,
-      trade_amount: tradeAmountBigInt,
+      trade_amount: tradeAmountForContract,
       venue_address: venueAddress
     }, {
       simulate: true
@@ -1408,9 +1545,59 @@ async function executeUserArbitrage(
 
   } catch (error) {
     console.error('Error executing user arbitrage:', error);
+    
+    // Handle specific error types
+    if (error instanceof Error) {
+      // Handle balance-related errors from the contract
+      if (error.message.includes('Error(Object, UnexpectedSize)')) {
+        return NextResponse.json({
+          success: false,
+          error: 'Insufficient balance or uninitialized user account',
+          message: 'This error occurs when you don\'t have sufficient funds deposited in the arbitrage contract, or your account balance map is corrupted. The contract requires internal deposits to execute trades.',
+          details: {
+            errorType: 'Balance/Account Error',
+            suggestion: 'Deposit the required tokens (USDC, XLM, etc.) into your arbitrage contract account using the deposit function. Ensure you have more than the trade amount deposited.',
+            action: 'deposit_funds',
+            technicalDetails: 'Contract failed to access user balance map - likely empty or insufficient funds'
+          }
+        }, { status: 400 });
+      }
+
+      // Handle user not initialized
+      if (error.message.includes('User not initialized')) {
+        return NextResponse.json({
+          success: false,
+          error: 'User account not initialized',
+          message: 'Your arbitrage account has not been initialized. Please initialize your account first.',
+          details: {
+            errorType: 'Initialization Error',
+            action: 'initialize_user_account',
+            suggestion: 'Call the initialize_user_account function with your trading configuration and risk limits.'
+          }
+        }, { status: 400 });
+      }
+
+      // Handle insufficient balance
+      if (error.message.includes('INSUFFICIENT_USER_BALANCE')) {
+        return NextResponse.json({
+          success: false,
+          error: 'Insufficient user balance',
+          message: 'You don\'t have enough funds deposited in the arbitrage contract to execute this trade.',
+          details: {
+            errorType: 'Insufficient Balance',
+            action: 'deposit_funds',
+            suggestion: 'Deposit more tokens into the arbitrage contract before attempting this trade.'
+          }
+        }, { status: 400 });
+      }
+    }
+
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to execute arbitrage'
+      error: error instanceof Error ? error.message : 'Failed to execute arbitrage',
+      details: {
+        suggestion: 'Check that you have sufficient funds deposited and your account is properly initialized.'
+      }
     }, { status: 500 });
   }
 }
