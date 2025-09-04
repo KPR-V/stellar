@@ -3,7 +3,7 @@ import { Client, networks, ProposalType } from '../../../daobindings/src'
 import { SorobanRpc, TransactionBuilder, scValToNative } from '@stellar/stellar-sdk'
 
 const RPC_URL = 'https://soroban-testnet.stellar.org'
-const DAO_CONTRACT = "CCY4OLIJJRMJ5SW7UKDKCXKF2ASIPSRUVLIZQUJXPHS6TH7RWQVIOPWR"
+const DAO_CONTRACT = "CD7OAOZNFRAUPMBJZRV2KMVDX4G6DX2SB7NDPCGXCAWL4JGD3DDFEPHZ"
 const NETWORK_PASSPHRASE = networks.testnet.networkPassphrase
 
 // ✅ Helper function to sanitize BigInt values for JSON serialization
@@ -726,7 +726,7 @@ async function submitSigned(params: any): Promise<NextResponse> {
       console.error('❌ Transaction submission error:', sendResponse)
       
       let errorMessage = 'Transaction failed during execution'
-      let errorDetails: any = {
+      const errorDetails: any = {
         hash: sendResponse.hash,
         status: sendResponse.status,
         latestLedger: sendResponse.latestLedger

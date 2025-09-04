@@ -171,51 +171,68 @@ impl ArbitrageBot {
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-
-        let current_balance = profile.balances.get(token_address.clone()).unwrap_or(0);
-        profile
-            .balances
-            .set(token_address.clone(), current_balance + amount);
-
+    
+        // ✅ DEFENSIVE MAP HANDLING
+        let mut balances = if profile.balances.len() == 0 {
+            Map::new(&env) // Re-initialize if empty/corrupted
+        } else {
+            profile.balances.clone() // Clone to avoid memory reference issues
+        };
+    
+        let current_balance = balances.get(token_address.clone()).unwrap_or(0);
+        balances.set(token_address.clone(), current_balance + amount);
+    
+        // ✅ ALWAYS REASSIGN MODIFIED MAP
+        profile.balances = balances;
         env.storage().persistent().set(&profile_key, &profile);
-
+    
         let token_client = TokenClient::new(&env, &token_address);
         token_client.transfer(&user, &env.current_contract_address(), &amount);
-
+    
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "deposit")),
             (user, token_address, amount),
         );
     }
+    
 
     pub fn withdraw_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
         user.require_auth();
-
+    
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
             .storage()
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-
-        let current_balance = profile.balances.get(token_address.clone()).unwrap_or(0);
+    
+        // ✅ DEFENSIVE MAP HANDLING
+        let mut balances = if profile.balances.len() == 0 {
+            Map::new(&env)
+        } else {
+            profile.balances.clone()
+        };
+    
+        let current_balance = balances.get(token_address.clone()).unwrap_or(0);
         if current_balance < amount {
             panic!("Insufficient balance");
         }
-
-        profile
-            .balances
-            .set(token_address.clone(), current_balance - amount);
+    
+        balances.set(token_address.clone(), current_balance - amount);
+        
+        // ✅ ALWAYS REASSIGN MODIFIED MAP
+        profile.balances = balances;
         env.storage().persistent().set(&profile_key, &profile);
-
+    
         let token_client = TokenClient::new(&env, &token_address);
         token_client.transfer(&env.current_contract_address(), &user, &amount);
-
+    
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "withdrawal")),
             (user, token_address, amount),
         );
     }
+    
 
     pub fn execute_user_arbitrage(
         env: Env,
@@ -225,90 +242,98 @@ impl ArbitrageBot {
         venue_address: Address,
     ) -> TradeExecution {
         user.require_auth();
-
+    
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
             .storage()
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-
+    
         if !profile.is_active {
             return Self::create_failed_execution(&env, &opportunity, "USER_INACTIVE");
         }
-
+    
         if trade_amount > profile.risk_limits.max_position_size {
             return Self::create_failed_execution(&env, &opportunity, "USER_POSITION_TOO_LARGE");
         }
-
-        // ✅ Check internal contract balance (not user wallet)
+    
+        // ✅ DEFENSIVE MAP HANDLING
+        let mut balances = if profile.balances.len() == 0 {
+            Map::new(&env)
+        } else {
+            profile.balances.clone()
+        };
+    
         let token = if opportunity.base_opportunity.trade_direction == Symbol::new(&env, "BUY") {
             &opportunity.base_opportunity.pair.quote_asset_address
         } else {
             &opportunity.base_opportunity.pair.base_asset_address
         };
-        let user_balance = profile.balances.get(token.clone()).unwrap_or(0);
+    
+        let user_balance = balances.get(token.clone()).unwrap_or(0);
         if user_balance < trade_amount {
             return Self::create_failed_execution(&env, &opportunity, "INSUFFICIENT_USER_BALANCE");
         }
-
+    
         let history_key = UserStorageKey::TradeHistory(user.clone());
         let history: UserTradeHistory = env.storage().persistent().get(&history_key).unwrap();
-
+    
         if history.daily_volume + trade_amount > profile.risk_limits.max_daily_volume {
             return Self::create_failed_execution(&env, &opportunity, "USER_DAILY_LIMIT_EXCEEDED");
         }
-
+    
         if !profile.trading_config.enabled {
             return Self::create_failed_execution(&env, &opportunity, "USER_BOT_DISABLED");
         }
-
-        // ✅ Deduct from internal balance BEFORE trade
-        profile
-            .balances
-            .set(token.clone(), user_balance - trade_amount);
+    
+        // ✅ SAFE BALANCE DEDUCTION
+        balances.set(token.clone(), user_balance - trade_amount);
+        profile.balances = balances.clone(); // Assign back before saving
         env.storage().persistent().set(&profile_key, &profile);
-
+    
         let simulation_result =
             Self::simulate_arbitrage_trade(&env, &opportunity, trade_amount, &venue_address);
-
+    
         if let Some(sim) = simulation_result {
             let slippage_bps = calculate_slippage_bps(
                 opportunity.base_opportunity.estimated_profit,
                 sim.amount_out - trade_amount,
             );
-
+    
             if slippage_bps > profile.trading_config.slippage_tolerance_bps {
-                // ✅ Refund on failed slippage check
-                let refund_balance =
-                    profile.balances.get(token.clone()).unwrap_or(0) + trade_amount;
-                profile.balances.set(token.clone(), refund_balance);
+                // ✅ SAFE REFUND WITH DEFENSIVE PATTERN
+                let mut refund_balances = balances.clone();
+                let current_balance = refund_balances.get(token.clone()).unwrap_or(0);
+                refund_balances.set(token.clone(), current_balance + trade_amount);
+                profile.balances = refund_balances;
                 env.storage().persistent().set(&profile_key, &profile);
                 return Self::create_failed_execution(&env, &opportunity, "USER_SLIPPAGE_TOO_HIGH");
             }
         }
-
-        // ✅ Execute trade using contract's funds
+    
         let execution =
             Self::execute_contract_trade(&env, &user, &opportunity, trade_amount, &venue_address);
-
-        // ✅ Update balance based on trade result
+    
+        // ✅ SAFE BALANCE UPDATE AFTER TRADE
+        let mut final_balances = balances.clone();
         if execution.status == Symbol::new(&env, "SUCCESS") {
-            let final_balance =
-                profile.balances.get(token.clone()).unwrap_or(0) + execution.actual_profit;
-            profile.balances.set(token.clone(), final_balance);
+            let current_balance = final_balances.get(token.clone()).unwrap_or(0);
+            final_balances.set(token.clone(), current_balance + execution.actual_profit);
             profile.total_profit_loss += execution.actual_profit;
         } else {
-            // ✅ Refund on failed trade
-            let refund_balance = profile.balances.get(token.clone()).unwrap_or(0) + trade_amount;
-            profile.balances.set(token.clone(), refund_balance);
+            // Refund on failed trade
+            let current_balance = final_balances.get(token.clone()).unwrap_or(0);
+            final_balances.set(token.clone(), current_balance + trade_amount);
         }
-
+    
+        profile.balances = final_balances;
         env.storage().persistent().set(&profile_key, &profile);
         Self::update_user_trade_history(&env, &user, &execution);
-
+    
         execution
     }
+    
 
     pub fn get_user_performance_metrics(env: Env, user: Address, days: u32) -> PerformanceMetrics {
         let history_key = UserStorageKey::TradeHistory(user);
@@ -331,18 +356,22 @@ impl ArbitrageBot {
 
     pub fn get_user_balances(env: Env, user: Address) -> Map<Address, i128> {
         let profile_key = UserStorageKey::Profile(user);
-        // Safe handling - return empty map if user doesn't exist
         if let Some(profile) = env
             .storage()
             .persistent()
             .get::<UserStorageKey, UserProfile>(&profile_key)
         {
-            profile.balances
+            // ✅ DEFENSIVE RETURN
+            if profile.balances.len() == 0 {
+                Map::new(&env)
+            } else {
+                profile.balances
+            }
         } else {
-            // Return empty balances map for uninitialized users
             Map::new(&env)
         }
     }
+    
 
     pub fn get_user_config(env: Env, user: Address) -> ArbitrageConfig {
         let profile_key = UserStorageKey::Profile(user);
@@ -1700,6 +1729,29 @@ env.events().publish(
 
         execution
     }
+
+// ✅ ADD THIS HELPER FUNCTION TO YOUR IMPL BLOCK
+fn safe_balance_operation(
+    env: &Env,
+    profile: &mut UserProfile,
+    token: &Address,
+    operation: impl Fn(i128) -> i128
+) {
+    let mut balances = if profile.balances.len() == 0 {
+        Map::new(env)
+    } else {
+        profile.balances.clone()
+    };
+    
+    let current_balance = balances.get(token.clone()).unwrap_or(0);
+    let new_balance = operation(current_balance);
+    balances.set(token.clone(), new_balance);
+    profile.balances = balances;
+}
+
+
+
+
 }
 
 #[soroban_sdk::contractclient(name = "TokenClient")]

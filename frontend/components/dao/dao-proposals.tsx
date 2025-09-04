@@ -373,8 +373,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       }
 
       const signResult = await walletKit.signTransaction(data.data.transactionXdr, {
-        // @ts-ignore
-        address,
+        address: address ?? undefined,
         networkPassphrase: WalletNetwork.TESTNET,
       })
 
