@@ -1,6 +1,7 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Map, String, Symbol, Vec,vec};
+use soroban_sdk::{contract, contractimpl, Address, Env, Map, String, Symbol, Vec, vec};
+
 
 pub mod dex;
 pub mod reflector;
@@ -9,7 +10,7 @@ pub use dex::{
     calculate_slippage_bps,
     estimate_gas_cost,
     simulate_trade,
-    StellarDEXClient as StellarDEXStruct, // ✅ Now properly available
+    StellarDEXClient, // ✅ FIXED: Now properly exported
     SwapResult,
 };
 pub use shared_types::*;
@@ -22,17 +23,9 @@ pub trait RiskManagerContract {
     fn check_trade_risk(env: Env, trade_size: i128) -> Symbol;
     fn update_daily_volume(env: Env, caller: Address, volume_delta: i128);
 }
-#[soroban_sdk::contractclient(name = "StellarDEXClient")]
-pub trait StellarDEXContract {
-    fn swap_exact_tokens_for_tokens(
-        env: Env,
-        amount_in: i128,
-        amount_out_min: i128,
-        path: Vec<Address>,
-        to: Address,
-        deadline: u64,
-    ) -> Vec<i128>;
-}
+
+
+
 
 const STELLAR_ORACLE_TESTNET: &str = "CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP";
 const FOREX_ORACLE_TESTNET: &str = "CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W";
@@ -187,7 +180,7 @@ impl ArbitrageBot {
         env.storage().persistent().set(&profile_key, &profile);
     
         let token_client = TokenClient::new(&env, &token_address);
-        token_client.transfer(&user, &env.current_contract_address(), &amount);
+    token_client.transfer(&env.current_contract_address(), &user, &amount);
     
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "deposit")),
@@ -225,7 +218,7 @@ impl ArbitrageBot {
         env.storage().persistent().set(&profile_key, &profile);
     
         let token_client = TokenClient::new(&env, &token_address);
-        token_client.transfer(&env.current_contract_address(), &user, &amount);
+    token_client.transfer(&env.current_contract_address(), &user, &amount);
     
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "withdrawal")),
@@ -1671,48 +1664,45 @@ env.events().publish(
         trade_amount: i128,
         venue_address: &Address,
     ) -> TradeExecution {
-        // Determine the correct direction of the trade based on the opportunity
-    let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
-        // If BUY, we use the quote asset (e.g., XLM) to buy the base asset (e.g., USDC)
-        (
-            opportunity.base_opportunity.pair.quote_asset_address.clone(),
-            opportunity.base_opportunity.pair.base_asset_address.clone()
-        )
-    } else {
-        // If SELL, we use the base asset (e.g., USDC) to buy the quote asset (e.g., XLM)
-        (
-            opportunity.base_opportunity.pair.base_asset_address.clone(),
-            opportunity.base_opportunity.pair.quote_asset_address.clone()
-        )
-    };
-
-    let deadline = env.ledger().timestamp() + 300;
-
-    let config: ArbitrageConfig = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "config"))
-        .unwrap();
-
-    let min_amount_out =
-        trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
-    let dex_client = StellarDEXClient::new(env, venue_address);
-
-    // ✅ This path is now correct (e.g., [USDC_address, XLM_address])
-    let path = Vec::from_array(env, [token_in, token_out]);
-
-    let amounts = dex_client.swap_exact_tokens_for_tokens(
-        &trade_amount,
-        &min_amount_out,
-        &path,
-        &env.current_contract_address(), // The bot receives the swapped tokens
-        &deadline,
-    );
-
+        let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+            (
+                opportunity.base_opportunity.pair.quote_asset_address.clone(),
+                opportunity.base_opportunity.pair.base_asset_address.clone()
+            )
+        } else {
+            (
+                opportunity.base_opportunity.pair.base_asset_address.clone(),
+                opportunity.base_opportunity.pair.quote_asset_address.clone()
+            )
+        };
+    
+        let deadline = env.ledger().timestamp() + 300;
+        let config: ArbitrageConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "config"))
+            .unwrap();
+    
+        let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
+        
+        let router_address = Address::from_string(&String::from_str(env, crate::dex::SOROSWAP_ROUTER_TESTNET));
+        let dex_client = StellarDEXClient::new(env, &router_address);
+    
+        let path = Vec::from_array(env, [token_in, token_out]);
+    
+        // ✅ FIXED: Pass references to match the fixed trait
+        let amounts = dex_client.swap_exact_tokens_for_tokens(
+            &trade_amount,
+            &min_amount_out,
+            &path,
+            &env.current_contract_address(),
+            &deadline,
+        );
+    
         let amount_out = amounts.get(1).unwrap_or(0);
         let gas_cost = estimate_gas_cost(env, 3);
         let net_profit = amount_out - trade_amount - gas_cost;
-
+    
         let execution = TradeExecution {
             opportunity: opportunity.base_opportunity.clone(),
             executed_amount: trade_amount,
@@ -1721,12 +1711,12 @@ env.events().publish(
             execution_timestamp: env.ledger().timestamp(),
             status: Symbol::new(env, "SUCCESS"),
         };
-
+    
         env.events().publish(
             (Symbol::new(env, "user_trade"), Symbol::new(env, "executed")),
             (user.clone(), execution.clone()),
         );
-
+    
         execution
     }
 
@@ -1754,12 +1744,16 @@ fn safe_balance_operation(
 
 }
 
+// In lib.rs
+
 #[soroban_sdk::contractclient(name = "TokenClient")]
 pub trait Token {
-    fn transfer(env: Env, from: Address, to: Address, amount: i128);
-    fn balance(env: Env, id: Address) -> i128;
-    fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32);
+    // ✅ FIXED: Correct signature for transfer
+    fn transfer(env: Env, from: &Address, to: &Address, amount: &i128);
+    fn balance(env: Env, id: &Address) -> i128;
+    fn approve(env: Env, from: &Address, spender: &Address, amount: &i128, expiration_ledger: &u32);
 }
+
 
 #[soroban_sdk::contractclient(name = "ArbBotClient")]
 pub trait ArbitrageBotContract {
