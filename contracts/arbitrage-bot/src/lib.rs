@@ -180,7 +180,7 @@ impl ArbitrageBot {
         env.storage().persistent().set(&profile_key, &profile);
     
         let token_client = TokenClient::new(&env, &token_address);
-    token_client.transfer(&env.current_contract_address(), &user, &amount);
+    token_client.transfer(&user, &env.current_contract_address(), &amount);
     
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "deposit")),

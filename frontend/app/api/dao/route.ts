@@ -3,7 +3,7 @@ import { Client, networks, ProposalType } from '../../../daobindings/src'
 import { SorobanRpc, TransactionBuilder, scValToNative } from '@stellar/stellar-sdk'
 
 const RPC_URL = 'https://soroban-testnet.stellar.org'
-const DAO_CONTRACT = "CCI2XVXMI224OH7MXWDTQGZ2RGLQ2BPKRMMRPEC7W545XSEZHWW4PAXF"
+const DAO_CONTRACT = "CAUUC5EO23A6HHT6KVVAXOQILLBIFQY566VUY5HDH3O5J2OD43LSPEVD"
 const NETWORK_PASSPHRASE = networks.testnet.networkPassphrase
 
 // ✅ Helper function to sanitize BigInt values for JSON serialization
