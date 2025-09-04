@@ -13,11 +13,12 @@ pub enum DEXError {
     SwapFailed = 5,
 }
 
-// ✅ FIXED: Soroswap Router interface with references
+// ✅ FIXED: Official Soroswap Router interface from documentation
+// ✅ FIXED: Use references to match generated client expectations
 #[contractclient(name = "StellarDEXClient")]
 pub trait SoroswapRouter {
     fn swap_exact_tokens_for_tokens(
-        env: Env,
+        e: Env,
         amount_in: &i128,
         amount_out_min: &i128,
         path: &Vec<Address>,
@@ -25,8 +26,8 @@ pub trait SoroswapRouter {
         deadline: &u64,
     ) -> Vec<i128>;
 
-    fn get_amounts_out(
-        env: Env,
+    fn router_get_amounts_out(
+        e: Env,
         amount_in: &i128,
         path: &Vec<Address>,
     ) -> Vec<i128>;
@@ -34,10 +35,11 @@ pub trait SoroswapRouter {
 
 #[contractclient(name = "TokenClient")]
 pub trait Token {
-    fn approve(env: Env, spender: &Address, amount: &i128);
-    fn transfer(env: Env, from: &Address, to: &Address, amount: &i128);
-    fn balance(env: Env, id: &Address) -> i128;
+    fn approve(e: Env, from: &Address, spender: &Address, amount: &i128, expiration_ledger: &u32);
+    fn transfer(e: Env, from: &Address, to: &Address, amount: &i128);
+    fn balance(e: Env, id: &Address) -> i128;
 }
+
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -51,7 +53,7 @@ pub struct SwapResult {
 // Soroswap testnet router address
 pub const SOROSWAP_ROUTER_TESTNET: &str = "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS";
 
-// ✅ FIXED: Real swap execution with correct parameter passing
+// ✅ FIXED: Correct implementation using official interface
 pub fn execute_real_swap(
     env: &Env,
     token_a: &Address,
@@ -68,18 +70,25 @@ pub fn execute_real_swap(
     let router_address = Address::from_string(&String::from_str(env, SOROSWAP_ROUTER_TESTNET));
     let router = StellarDEXClient::new(env, &router_address);
 
+    // ✅ CRITICAL: Token approval is required before swap
     let token_client = TokenClient::new(env, token_a);
-    // ✅ FIXED: Pass by reference
-    token_client.approve(&router_address, &amount_in);
+    let expiration_ledger = env.ledger().sequence() + 1000;
+    
+    token_client.approve(
+        &env.current_contract_address(),
+       &router_address,
+        &amount_in,
+        &expiration_ledger,
+    );
 
     let path = Vec::from_array(env, [token_a.clone(), token_b.clone()]);
 
-    // ✅ FIXED: Pass all arguments by reference
+    // ✅ FIXED: Using official swap method
     let amounts = router.swap_exact_tokens_for_tokens(
         &amount_in,
         &min_amount_out,
         &path,
-        to,
+        &to.clone(),
         &deadline,
     );
 
@@ -92,7 +101,7 @@ pub fn execute_real_swap(
         return Err(DEXError::SlippageExceeded);
     }
 
-    let fees_paid = (amount_in * 30) / 10000;
+    let fees_paid = (amount_in * 30) / 10000; // 0.3% fee
     
     Ok(SwapResult {
         amount_out,
@@ -102,6 +111,7 @@ pub fn execute_real_swap(
     })
 }
 
+// ✅ FIXED: Using official method name
 pub fn get_amounts_out_real(
     env: &Env,
     amount_in: i128,
@@ -112,8 +122,9 @@ pub fn get_amounts_out_real(
     let router = StellarDEXClient::new(env, &router_address);
 
     let path = Vec::from_array(env, [token_a.clone(), token_b.clone()]);
-    // ✅ FIXED: Pass arguments by reference
-    let amounts = router.get_amounts_out(&amount_in, &path);
+    
+    // ✅ CRITICAL: Using correct method name router_get_amounts_out
+    let amounts = router.router_get_amounts_out(&amount_in, &path);
 
     if amounts.len() < 2 {
         return Err(DEXError::InsufficientLiquidity);

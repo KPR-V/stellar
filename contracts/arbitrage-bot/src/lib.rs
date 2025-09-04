@@ -180,7 +180,8 @@ impl ArbitrageBot {
         env.storage().persistent().set(&profile_key, &profile);
     
         let token_client = TokenClient::new(&env, &token_address);
-    token_client.transfer(&user, &env.current_contract_address(), &amount);
+        // ✅ FIXED: Direct values, correct parameter order
+        token_client.transfer(&user, &env.current_contract_address(), &amount);
     
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "deposit")),
@@ -218,7 +219,8 @@ impl ArbitrageBot {
         env.storage().persistent().set(&profile_key, &profile);
     
         let token_client = TokenClient::new(&env, &token_address);
-    token_client.transfer(&env.current_contract_address(), &user, &amount);
+        // ✅ FIXED: Direct values, correct parameter order
+        token_client.transfer(&env.current_contract_address(), &user, &amount);
     
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "withdrawal")),
@@ -1677,12 +1679,7 @@ env.events().publish(
         };
     
         let deadline = env.ledger().timestamp() + 300;
-        let config: ArbitrageConfig = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(env, "config"))
-            .unwrap();
-    
+        let config: ArbitrageConfig = env.storage().instance().get(&Symbol::new(env, "config")).unwrap();
         let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
         
         let router_address = Address::from_string(&String::from_str(env, crate::dex::SOROSWAP_ROUTER_TESTNET));
@@ -1690,7 +1687,7 @@ env.events().publish(
     
         let path = Vec::from_array(env, [token_in, token_out]);
     
-        // ✅ FIXED: Pass references to match the fixed trait
+        // ✅ FIXED: Direct values, no references
         let amounts = dex_client.swap_exact_tokens_for_tokens(
             &trade_amount,
             &min_amount_out,
@@ -1748,11 +1745,11 @@ fn safe_balance_operation(
 
 #[soroban_sdk::contractclient(name = "TokenClient")]
 pub trait Token {
-    // ✅ FIXED: Correct signature for transfer
-    fn transfer(env: Env, from: &Address, to: &Address, amount: &i128);
-    fn balance(env: Env, id: &Address) -> i128;
-    fn approve(env: Env, from: &Address, spender: &Address, amount: &i128, expiration_ledger: &u32);
+    fn transfer(e: Env, from: &Address, to: &Address, amount: &i128);
+    fn balance(e: Env, id: &Address) -> i128;
+    fn approve(e: Env, from: &Address, spender: &Address, amount: &i128, expiration_ledger: &u32);
 }
+
 
 
 #[soroban_sdk::contractclient(name = "ArbBotClient")]
