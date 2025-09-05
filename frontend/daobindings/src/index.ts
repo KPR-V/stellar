@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
   testnet: {
     networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CAUUC5EO23A6HHT6KVVAXOQILLBIFQY566VUY5HDH3O5J2OD43LSPEVD",
+    contractId: "CCTY5KAMW3SKZD56YMZ7HQTZ6FZKHS3CUDEEFWCS6QC5PSMOFFUGTGCO",
   }
 } as const
 
@@ -663,7 +663,7 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    throw new Error("Deploy method not available in this version. Please use stellar CLI to deploy contracts.")
+    return ContractClient.deploy(null, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(

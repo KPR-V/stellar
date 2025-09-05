@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Client, networks, ProposalType } from '../../../daobindings/src'
+import { ArbitrageConfig, Client, EnhancedStablecoinPair, networks, ProposalData, ProposalType, TradingVenue } from '../../../daobindings/src'
 import { SorobanRpc, TransactionBuilder, scValToNative } from '@stellar/stellar-sdk'
 
 const RPC_URL = 'https://soroban-testnet.stellar.org'
@@ -34,54 +34,129 @@ function sanitizeForJson(obj: any): any {
 // ✅ Helper function for proper ProposalType creation
 function createProposalType(typeString: string): ProposalType {
   const validTypes: Record<string, ProposalType> = {
-    'UpdateConfig': { tag: 'UpdateConfig', values: undefined as void },
-    'AddTradingPair': { tag: 'AddTradingPair', values: undefined as void },
-    'AddTradingVenue': { tag: 'AddTradingVenue', values: undefined as void },
-    'PausePair': { tag: 'PausePair', values: undefined as void },
-    'UpdateRiskManager': { tag: 'UpdateRiskManager', values: undefined as void },
-    'EmergencyStop': { tag: 'EmergencyStop', values: undefined as void },
-    'TransferAdmin': { tag: 'TransferAdmin', values: undefined as void },
+    'UpdateConfig': { tag: 'UpdateConfig', values: undefined },
+    'AddTradingPair': { tag: 'AddTradingPair', values: undefined },
+    'AddTradingVenue': { tag: 'AddTradingVenue', values: undefined },
+    'PausePair': { tag: 'PausePair', values: undefined },
+    'UpdateRiskManager': { tag: 'UpdateRiskManager', values: undefined },
+    'EmergencyStop': { tag: 'EmergencyStop', values: undefined },
+    'TransferAdmin': { tag: 'TransferAdmin', values: undefined },
   }
   
   return validTypes[typeString] || validTypes['UpdateConfig']
 }
 
-// ✅ FIXED: Helper function to create proper proposal data based on type
+// ✅ FIXED: Helper to create ArbitrageConfig from input
+function createArbitrageConfig(configData: any) {
+  // Validate and convert config data to ArbitrageConfig structure
+  return {
+    enabled: Boolean(configData.enabled ?? true),
+    min_profit_bps: Number(configData.min_profit_bps || 50),
+    max_trade_size: BigInt(configData.max_trade_size || "1000000000000"), // 1M tokens with 7 decimals
+    slippage_tolerance_bps: Number(configData.slippage_tolerance_bps || 100),
+    max_gas_price: BigInt(configData.max_gas_price || "2000"),
+    min_liquidity: BigInt(configData.min_liquidity || "1000000000"), // 100 tokens with 7 decimals
+  }
+}
+
+// ✅ Helper to create Enhanced Trading Pair
+function createEnhancedTradingPair(pairData: any) {
+  return {
+    base: {
+      base_asset_address: pairData.base_asset_address,
+      quote_asset_address: pairData.quote_asset_address,
+      base_asset_symbol: pairData.base_asset_symbol,
+      quote_asset_symbol: pairData.quote_asset_symbol,
+      target_peg: BigInt(pairData.target_peg || 10000),
+      deviation_threshold_bps: Number(pairData.deviation_threshold_bps || 50),
+    },
+    enabled: Boolean(pairData.enabled ?? true),
+    fee_config: {
+      bridge_fee_bps: Number(pairData.bridge_fee_bps || 0),
+      gas_fee_bps: Number(pairData.gas_fee_bps || 10),
+      keeper_fee_bps: Number(pairData.keeper_fee_bps || 0),
+      trading_fee_bps: Number(pairData.trading_fee_bps || 30),
+    },
+    price_sources: pairData.price_sources || {
+      fallback_enabled: true,
+      fiat_sources: [],
+      min_sources_required: 1,
+      stablecoin_sources: [],
+    },
+    risk_config: {
+      correlation_limit: BigInt(pairData.correlation_limit || "50000000000"),
+      max_daily_volume: BigInt(pairData.max_daily_volume || "100000000000"),
+      max_position_size: BigInt(pairData.max_position_size || "50000000000"),
+      volatility_threshold_bps: Number(pairData.volatility_threshold_bps || 10000),
+    },
+    twap_config: {
+      enabled: Boolean(pairData.twap_enabled ?? false),
+      min_deviation_bps: Number(pairData.min_deviation_bps || 50),
+      periods: Number(pairData.periods || 1),
+    },
+  }
+}
+
+// ✅ Helper to create Trading Venue
+function createTradingVenue(venueData: any) {
+  return {
+    address: venueData.address,
+    name: venueData.name,
+    enabled: Boolean(venueData.enabled ?? true),
+    fee_bps: Number(venueData.fee_bps || 30),
+    liquidity_threshold: BigInt(venueData.liquidity_threshold || "1000000000"),
+  }
+}
+
+// ✅ FIXED: Helper function to create proper proposal data for ARBITRAGE BOT updates
+function createSome<T>(val: T): { tag: 'Some', values: [T] } {
+  return { tag: 'Some', values: [val] };
+}
+
+// ✅ Helper function to create None variant with the correct structure
+function createNone(): { tag: 'None' } {
+  return { tag: 'None' };
+}
+// ✅ Helper function to create None variant explicitly typed as Option<T>
+
+// ✅ FIXED: Helper function to create proper proposal data for ARBITRAGE BOT updates
 function createProposalData(proposalType: string, customData?: any) {
   const baseData = {
-    admin_address: undefined,
-    config_data: undefined,
-    generic_data: undefined,
-    pair_data: undefined,
-    symbol_data: undefined,
+    admin_address: undefined, // Use undefined directly for Option<string>
+    config_data: undefined,   // Use undefined directly for Option<ArbitrageConfig>
+    generic_data: undefined,  // Use undefined directly for Option<Buffer>
+    pair_data: undefined,     // Use undefined directly for Option<EnhancedStablecoinPair>
+    symbol_data: undefined,   // Use undefined directly for Option<string>
     venue_data: undefined,
   }
 
   switch (proposalType) {
-    case 'AddTradingPair':
-      if (customData?.pair_data) {
+    case 'UpdateConfig':
+      if (customData?.config_data) {
+        const arbitrageConfig = createArbitrageConfig(customData.config_data)
         return {
           ...baseData,
-          pair_data: customData.pair_data
+          config_data: arbitrageConfig
+        }
+      }
+      return baseData
+      
+    case 'AddTradingPair':
+      if (customData?.pair_data) {
+        const enhancedPair = createEnhancedTradingPair(customData.pair_data)
+        return {
+          ...baseData,
+          pair_data: enhancedPair
         }
       }
       return baseData
       
     case 'AddTradingVenue':
       if (customData?.venue_data) {
+        const venue = createTradingVenue(customData.venue_data)
         return {
           ...baseData,
-          venue_data: customData.venue_data
-        }
-      }
-      return baseData
-      
-    case 'UpdateConfig':
-      // ✅ FIXED: Handle DAO config properly
-      if (customData?.config_data) {
-        return {
-          ...baseData,
-          config_data: customData.config_data
+          venue_data: venue
         }
       }
       return baseData
@@ -268,7 +343,7 @@ async function getProposal(params: any): Promise<NextResponse> {
   }
 }
 
-// ✅ FIXED: Enhanced createProposal with proper validation and error handling
+// ✅ FIXED: Enhanced createProposal for ARBITRAGE BOT updates
 async function createProposal(params: any): Promise<NextResponse> {
   const { proposer, title, description, proposal_type, proposal_data } = params
   try {
@@ -294,6 +369,15 @@ async function createProposal(params: any): Promise<NextResponse> {
       })
     }
 
+    // ✅ Validate proposal type
+    const validTypes = ['UpdateConfig', 'AddTradingPair', 'AddTradingVenue', 'PausePair', 'UpdateRiskManager', 'EmergencyStop', 'TransferAdmin']
+    if (!validTypes.includes(proposal_type)) {
+      return NextResponse.json({
+        success: false,
+        error: `Invalid proposal type. Must be one of: ${validTypes.join(', ')}`
+      })
+    }
+
     const client = new Client({
       contractId: DAO_CONTRACT,
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -304,32 +388,13 @@ async function createProposal(params: any): Promise<NextResponse> {
     const proposalType = createProposalType(proposal_type)
     const fullProposalData = createProposalData(proposal_type, proposal_data)
 
-    console.log('Creating proposal with data:', {
+    console.log('Creating arbitrage bot proposal with data:', {
       proposer,
       proposal_type: proposalType,
       title: title.trim(),
       description: (description || '').trim(),
       proposal_data: fullProposalData
     })
-
-    // ✅ First simulate to catch validation errors early
-    try {
-      const simulationTx = await client.create_proposal({
-        proposer,
-        proposal_type: proposalType,
-        title: title.trim(),
-        description: (description || '').trim(),
-        proposal_data: fullProposalData,
-      }, { simulate: true })
-      
-      console.log('✅ Simulation successful')
-    } catch (simError) {
-      console.error('❌ Simulation failed:', simError)
-      return NextResponse.json({ 
-        success: false, 
-        error: `Proposal validation failed: ${simError instanceof Error ? simError.message : 'Simulation error'}`
-      })
-    }
 
     // ✅ Build transaction for signing
     const assembledTx = await client.create_proposal({
@@ -357,6 +422,7 @@ async function createProposal(params: any): Promise<NextResponse> {
   }
 }
 
+// ✅ Keep all other functions unchanged
 async function cancelProposal(params: any): Promise<NextResponse> {
   const { proposer, proposal_id } = params
   try {
@@ -637,7 +703,6 @@ async function getTotalStaked(): Promise<NextResponse> {
   }
 }
 
-// ✅ FIXED: getDaoConfig with proper BigInt handling
 async function getDaoConfig(): Promise<NextResponse> {
   try {
     const client = new Client({

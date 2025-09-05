@@ -40,19 +40,23 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     title: '',
     description: '',
     proposal_type: 'UpdateConfig' as string,
-    // DAO Config fields for UpdateConfig proposals
-    dao_config_data: {
-      min_stake_to_propose: '',
-      voting_duration_ledgers: '',
-      quorum_percentage: '',
-      execution_delay: '',
-      proposal_threshold_bps: '',
+    // ✅ FIXED: Arbitrage Bot Config fields (not DAO config)
+    arbitrage_config_data: {
+      enabled: 'true',
+      min_profit_bps: '',
+      max_trade_size: '',
+      slippage_tolerance_bps: '',
+      max_gas_price: '',
+      min_liquidity: '',
     },
     // Trading pair fields
     trading_pair_data: {
-      stablecoin_symbol: '',
-      stablecoin_address: '',
+      base_asset_symbol: '',
+      quote_asset_symbol: '',
+      base_asset_address: '',
+      quote_asset_address: '',
       target_peg: '',
+      deviation_threshold_bps: '',
     },
     // Venue fields
     venue_data: {
@@ -64,6 +68,8 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     admin_address: '',
     symbol_data: '',
   })
+
+
 
   // Helper functions for type handling
   const getProposalTypeTag = (proposalType: ProposalType): string => {
@@ -529,58 +535,54 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     }
     if (!walletKit) return
     
-    // Prepare proposal data based on type with proper validation
+    // ✅ FIXED: Prepare proposal data for ARBITRAGE BOT governance
     let proposalData: any = {}
     
     switch (form.proposal_type) {
+      case 'UpdateConfig':
+        // ✅ Create ArbitrageConfig structure
+        proposalData = {
+          config_data: {
+            enabled: form.arbitrage_config_data.enabled === 'true',
+            min_profit_bps: form.arbitrage_config_data.min_profit_bps ? 
+              Number(form.arbitrage_config_data.min_profit_bps) : 50,
+            max_trade_size: form.arbitrage_config_data.max_trade_size || "50000000000",
+            slippage_tolerance_bps: form.arbitrage_config_data.slippage_tolerance_bps ? 
+              Number(form.arbitrage_config_data.slippage_tolerance_bps) : 100,
+            max_gas_price: form.arbitrage_config_data.max_gas_price || "2000",
+            min_liquidity: form.arbitrage_config_data.min_liquidity || "1000000000",
+          }
+        }
+        break
+        
       case 'AddTradingPair':
-        if (!form.trading_pair_data.stablecoin_symbol || !form.trading_pair_data.stablecoin_address) {
-          setError('Stablecoin symbol and address are required for trading pair proposals')
+        if (!form.trading_pair_data.base_asset_symbol || !form.trading_pair_data.quote_asset_symbol) {
+          setError('Both base and quote asset symbols are required')
+          return
+        }
+        
+        if (!form.trading_pair_data.base_asset_address || !form.trading_pair_data.quote_asset_address) {
+          setError('Both base and quote asset addresses are required')
           return
         }
         
         proposalData = {
           pair_data: {
-            base: {
-              stablecoin_symbol: form.trading_pair_data.stablecoin_symbol,
-              stablecoin_address: form.trading_pair_data.stablecoin_address,
-              target_peg: form.trading_pair_data.target_peg ? 
-                String(Number(form.trading_pair_data.target_peg) * 1000000) :
-                "1000000",
-              fiat_symbol: 'USD',
-              deviation_threshold_bps: 100,
-            },
-            enabled: true,
-            fee_config: {
-              trading_fee_bps: 10,
-              keeper_fee_bps: 5,
-              gas_fee_bps: 3,
-              bridge_fee_bps: 2,
-            },
-            risk_config: {
-              max_position_size: String(1000000 * 1000000),
-              max_daily_volume: String(10000000 * 1000000),
-              volatility_threshold_bps: 500,
-              correlation_limit: String(800000),
-            },
-            price_sources: {
-              min_sources_required: 1,
-              fallback_enabled: true,
-              fiat_sources: [],
-              stablecoin_sources: [],
-            },
-            twap_config: {
-              enabled: false,
-              periods: 5,
-              min_deviation_bps: 50,
-            }
+            base_asset_symbol: form.trading_pair_data.base_asset_symbol,
+            quote_asset_symbol: form.trading_pair_data.quote_asset_symbol,
+            base_asset_address: form.trading_pair_data.base_asset_address,
+            quote_asset_address: form.trading_pair_data.quote_asset_address,
+            target_peg: form.trading_pair_data.target_peg ? 
+              Number(form.trading_pair_data.target_peg) : 10000,
+            deviation_threshold_bps: form.trading_pair_data.deviation_threshold_bps ? 
+              Number(form.trading_pair_data.deviation_threshold_bps) : 50,
           }
         }
         break
         
       case 'AddTradingVenue':
         if (!form.venue_data.name || !form.venue_data.address) {
-          setError('Venue name and address are required for venue proposals')
+          setError('Venue name and address are required')
           return
         }
         
@@ -589,9 +591,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
             name: form.venue_data.name,
             address: form.venue_data.address,
             fee_bps: form.venue_data.fee_bps ? Number(form.venue_data.fee_bps) : 30,
-            liquidity_threshold: form.venue_data.liquidity_threshold ? 
-              String(Number(form.venue_data.liquidity_threshold) * 1000000) :
-              String(1000000 * 1000000),
+            liquidity_threshold: form.venue_data.liquidity_threshold || "1000000000",
             enabled: true,
           }
         }
@@ -599,7 +599,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         
       case 'TransferAdmin':
         if (!form.admin_address) {
-          setError('New admin address is required for admin transfer proposals')
+          setError('New admin address is required')
           return
         }
         
@@ -608,6 +608,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           return
         }
         
+        // ✅ FIXED: Send raw string - backend will wrap it properly
         proposalData = {
           admin_address: form.admin_address
         }
@@ -615,40 +616,12 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         
       case 'PausePair':
         if (!form.symbol_data) {
-          setError('Stablecoin symbol is required for pause pair proposals')
+          setError('Asset symbol is required')
           return
         }
         
         proposalData = {
           symbol_data: form.symbol_data
-        }
-        break
-        
-      case 'UpdateConfig':
-        // ✅ FIXED: For DAO config updates, create proper DAOConfig structure
-        if (!daoConfig) {
-          setError('DAO config not loaded')
-          return
-        }
-        
-        proposalData = {
-          config_data: {
-            min_stake_to_propose: form.dao_config_data.min_stake_to_propose ? 
-              String(Number(form.dao_config_data.min_stake_to_propose) * 10000000) :
-              String(daoConfig.min_stake_to_propose),
-            voting_duration_ledgers: form.dao_config_data.voting_duration_ledgers ? 
-              Number(form.dao_config_data.voting_duration_ledgers) :
-              Number(daoConfig.voting_duration_ledgers),
-            quorum_percentage: form.dao_config_data.quorum_percentage ? 
-              Number(form.dao_config_data.quorum_percentage) :
-              Number(daoConfig.quorum_percentage),
-            execution_delay: form.dao_config_data.execution_delay ? 
-              Number(form.dao_config_data.execution_delay) :
-              Number(daoConfig.execution_delay),
-            proposal_threshold_bps: form.dao_config_data.proposal_threshold_bps ? 
-              Number(form.dao_config_data.proposal_threshold_bps) :
-              Number(daoConfig.proposal_threshold_bps || 0),
-          }
         }
         break
         
@@ -665,7 +638,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     setError(null)
     
     try {
-      console.log('Creating proposal:', form.title, 'Type:', form.proposal_type, 'Data:', proposalData)
+      console.log('Creating arbitrage bot proposal:', form.title, 'Type:', form.proposal_type, 'Data:', proposalData)
       
       const res = await fetch('/api/dao', {
         method: 'POST',
@@ -685,12 +658,12 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         setError(data.error || 'Failed to prepare proposal')
         return
       }
-
+  
       const signResult = await walletKit.signTransaction(data.data.transactionXdr, {
         address,
         networkPassphrase: WalletNetwork.TESTNET,
       })
-
+  
       const submitRes = await fetch('/api/dao', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -711,17 +684,21 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         title: '', 
         description: '', 
         proposal_type: 'UpdateConfig',
-        dao_config_data: {
-          min_stake_to_propose: '',
-          voting_duration_ledgers: '',
-          quorum_percentage: '',
-          execution_delay: '',
-          proposal_threshold_bps: '',
+        arbitrage_config_data: {
+          enabled: 'true',
+          min_profit_bps: '',
+          max_trade_size: '',
+          slippage_tolerance_bps: '',
+          max_gas_price: '',
+          min_liquidity: '',
         },
         trading_pair_data: {
-          stablecoin_symbol: '',
-          stablecoin_address: '',
+          base_asset_symbol: '',
+          quote_asset_symbol: '',
+          base_asset_address: '',
+          quote_asset_address: '',
           target_peg: '',
+          deviation_threshold_bps: '',
         },
         venue_data: {
           name: '',
@@ -742,6 +719,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       setCreating(false)
     }
   }
+  
 
   const isVotingEnded = (votingEndsAt: bigint | number) => {
     const timestamp = typeof votingEndsAt === 'bigint' ? Number(votingEndsAt) : votingEndsAt
@@ -761,7 +739,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
   return (
     <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-white/5 p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-white/90 text-lg font-medium">Governance Proposals</h3>
+        <h3 className="text-white/90 text-lg font-medium">Arbitrage Bot Governance</h3>
         <div className="flex items-center gap-3">
           {address && (
             <div className="text-xs text-white/60">
@@ -816,9 +794,11 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       {/* Enhanced DAO Info */}
       {daoConfig && (
         <div className="text-xs text-white/50 p-2 bg-white/5 rounded-lg space-y-1">
+          <div>🏛️ DAO Governance Rules:</div>
           <div>Min Stake to Propose: {(Number(daoConfig.min_stake_to_propose || 0) / 10000000).toFixed(2)} KALE</div>
           <div>Voting Duration: {daoConfig.voting_duration_ledgers || 0} ledgers • Quorum: {daoConfig.quorum_percentage || 0}%</div>
           <div>Execution Delay: {daoConfig.execution_delay || 0}s • Admin: {admin ? `${admin.slice(0, 8)}...` : 'N/A'}</div>
+          <div className="text-blue-300/70 pt-1">🤖 Proposals here govern the Arbitrage Bot Contract</div>
         </div>
       )}
 
@@ -841,10 +821,13 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           )}
         </div>
 
-        {/* Enhanced Proposal Creation Form */}
+        {/* ✅ FIXED: Enhanced Proposal Creation Form for Arbitrage Bot */}
         {showCreateForm && (
           <div className="p-4 bg-black/30 border border-white/10 rounded-lg space-y-4">
-            <h4 className="text-white/90 text-lg font-medium">Create New Proposal</h4>
+            <h4 className="text-white/90 text-lg font-medium">Create Arbitrage Bot Proposal</h4>
+            <div className="text-sm text-blue-300/80 mb-4">
+              🤖 These proposals will govern the Arbitrage Bot contract behavior
+            </div>
             
             {/* Basic Fields */}
             <div className="space-y-3">
@@ -868,7 +851,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 disabled={creating}
                 className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
               >
-                <option value="UpdateConfig">Update DAO Config</option>
+                <option value="UpdateConfig">Update Arbitrage Bot Config</option>
                 <option value="AddTradingPair">Add Trading Pair</option>
                 <option value="AddTradingVenue">Add Trading Venue</option>
                 <option value="PausePair">Pause Pair</option>
@@ -878,93 +861,105 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               </select>
             </div>
 
-            {/* Conditional Fields Based on Proposal Type */}
+            {/* ✅ FIXED: Arbitrage Bot Configuration (not DAO config) */}
             {form.proposal_type === 'UpdateConfig' && (
               <div className="space-y-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                <h5 className="text-blue-300 text-sm font-medium">⚙️ DAO Configuration Update</h5>
+                <h5 className="text-blue-300 text-sm font-medium">🤖 Arbitrage Bot Configuration</h5>
                 <div className="text-xs text-blue-200/80 mb-2">
-                  Update the DAO's governance parameters. Leave fields empty to keep current values.
+                  Update the arbitrage bot's trading parameters and behavior settings.
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-white/70 block mb-1">Min Stake to Propose (KALE)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={form.dao_config_data.min_stake_to_propose}
+                    <label className="text-xs text-white/70 block mb-1">Bot Enabled</label>
+                    <select
+                      value={form.arbitrage_config_data.enabled}
                       onChange={e => setForm(f => ({ 
                         ...f, 
-                        dao_config_data: { ...f.dao_config_data, min_stake_to_propose: e.target.value }
+                        arbitrage_config_data: { ...f.arbitrage_config_data, enabled: e.target.value }
                       }))}
-                      placeholder={`Current: ${formatStakeAmount(daoConfig?.min_stake_to_propose || '0')} KALE`}
                       disabled={creating}
                       className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
+                    >
+                      <option value="true">Enabled</option>
+                      <option value="false">Disabled</option>
+                    </select>
                   </div>
                   
                   <div>
-                    <label className="text-xs text-white/70 block mb-1">Voting Duration (ledgers)</label>
+                    <label className="text-xs text-white/70 block mb-1">Min Profit (basis points)</label>
                     <input
                       type="number"
                       min="1"
-                      value={form.dao_config_data.voting_duration_ledgers}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        dao_config_data: { ...f.dao_config_data, voting_duration_ledgers: e.target.value }
-                      }))}
-                      placeholder={`Current: ${daoConfig?.voting_duration_ledgers || 0}`}
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Quorum Percentage (%)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={form.dao_config_data.quorum_percentage}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        dao_config_data: { ...f.dao_config_data, quorum_percentage: e.target.value }
-                      }))}
-                      placeholder={`Current: ${daoConfig?.quorum_percentage || 0}%`}
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Execution Delay (seconds)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.dao_config_data.execution_delay}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        dao_config_data: { ...f.dao_config_data, execution_delay: e.target.value }
-                      }))}
-                      placeholder={`Current: ${daoConfig?.execution_delay || 0}s`}
-                      disabled={creating}
-                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-white/70 block mb-1">Proposal Threshold (basis points)</label>
-                    <input
-                      type="number"
-                      min="0"
                       max="10000"
-                      value={form.dao_config_data.proposal_threshold_bps}
+                      value={form.arbitrage_config_data.min_profit_bps}
                       onChange={e => setForm(f => ({ 
                         ...f, 
-                        dao_config_data: { ...f.dao_config_data, proposal_threshold_bps: e.target.value }
+                        arbitrage_config_data: { ...f.arbitrage_config_data, min_profit_bps: e.target.value }
                       }))}
-                      placeholder={`Current: ${daoConfig?.proposal_threshold_bps || 0} bps`}
+                      placeholder="50 (0.5%)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Max Trade Size (stroops)</label>
+                    <input
+                      type="text"
+                      value={form.arbitrage_config_data.max_trade_size}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        arbitrage_config_data: { ...f.arbitrage_config_data, max_trade_size: e.target.value }
+                      }))}
+                      placeholder="50000000000 (5,000 XLM)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Slippage Tolerance (bps)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      value={form.arbitrage_config_data.slippage_tolerance_bps}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        arbitrage_config_data: { ...f.arbitrage_config_data, slippage_tolerance_bps: e.target.value }
+                      }))}
+                      placeholder="100 (1%)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Max Gas Price (stroops)</label>
+                    <input
+                      type="text"
+                      value={form.arbitrage_config_data.max_gas_price}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        arbitrage_config_data: { ...f.arbitrage_config_data, max_gas_price: e.target.value }
+                      }))}
+                      placeholder="2000"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Min Liquidity (stroops)</label>
+                    <input
+                      type="text"
+                      value={form.arbitrage_config_data.min_liquidity}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        arbitrage_config_data: { ...f.arbitrage_config_data, min_liquidity: e.target.value }
+                      }))}
+                      placeholder="1000000000 (100 tokens)"
                       disabled={creating}
                       className="w-full bg-black/30 border border-blue-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50 disabled:opacity-50"
                     />
@@ -972,59 +967,119 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 </div>
                 
                 <div className="text-xs text-white/60 space-y-1 pt-2 border-t border-blue-500/20">
-                  <div className="font-medium">⚠️ Note:</div>
-                  <div>This updates DAO governance parameters like minimum stake, voting duration, etc.</div>
-                  <div>To change the minimum stake requirement, enter the new amount in KALE.</div>
+                  <div className="font-medium">🤖 Note:</div>
+                  <div>This configures the arbitrage bot's trading behavior, not the DAO itself.</div>
+                  <div>Leave fields empty to keep current values. Values are in stroops (1 XLM = 10,000,000 stroops).</div>
                 </div>
               </div>
             )}
 
+            {/* ✅ FIXED: Trading Pair for Arbitrage Bot */}
             {form.proposal_type === 'AddTradingPair' && (
-              <div className="space-y-3 p-3 bg-white/5 rounded-lg">
-                <h5 className="text-white/80 text-sm font-medium">Trading Pair Details</h5>
-                <div className="text-xs text-white/60 mb-2">
-                  Add a new stablecoin trading pair to the arbitrage system
+              <div className="space-y-3 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                <h5 className="text-green-300 text-sm font-medium">➕ Add Trading Pair</h5>
+                <div className="text-xs text-green-200/80 mb-2">
+                  Add a new asset pair for the arbitrage bot to monitor and trade.
                 </div>
-                <input
-                  value={form.trading_pair_data.stablecoin_symbol}
-                  onChange={e => setForm(f => ({ 
-                    ...f, 
-                    trading_pair_data: { ...f.trading_pair_data, stablecoin_symbol: e.target.value }
-                  }))}
-                  placeholder="Stablecoin Symbol (e.g., USDC)"
-                  disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
-                />
-                <input
-                  value={form.trading_pair_data.stablecoin_address}
-                  onChange={e => setForm(f => ({ 
-                    ...f, 
-                    trading_pair_data: { ...f.trading_pair_data, stablecoin_address: e.target.value }
-                  }))}
-                  placeholder="Stablecoin Contract Address (56 chars, starts with C)"
-                  disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
-                />
-                <input
-                  type="number"
-                  step="0.000001"
-                  value={form.trading_pair_data.target_peg}
-                  onChange={e => setForm(f => ({ 
-                    ...f, 
-                    trading_pair_data: { ...f.trading_pair_data, target_peg: e.target.value }
-                  }))}
-                  placeholder="Target Peg (e.g., 1.0 for $1.00, leave empty for default)"
-                  disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
-                />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Base Asset Symbol</label>
+                    <input
+                      value={form.trading_pair_data.base_asset_symbol}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        trading_pair_data: { ...f.trading_pair_data, base_asset_symbol: e.target.value }
+                      }))}
+                      placeholder="USDC"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-green-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-green-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Quote Asset Symbol</label>
+                    <input
+                      value={form.trading_pair_data.quote_asset_symbol}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        trading_pair_data: { ...f.trading_pair_data, quote_asset_symbol: e.target.value }
+                      }))}
+                      placeholder="XLM"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-green-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-green-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Base Asset Address</label>
+                    <input
+                      value={form.trading_pair_data.base_asset_address}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        trading_pair_data: { ...f.trading_pair_data, base_asset_address: e.target.value }
+                      }))}
+                      placeholder="Contract address (starts with C)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-green-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-green-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Quote Asset Address</label>
+                    <input
+                      value={form.trading_pair_data.quote_asset_address}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        trading_pair_data: { ...f.trading_pair_data, quote_asset_address: e.target.value }
+                      }))}
+                      placeholder="Contract address (starts with C)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-green-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-green-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Target Peg (basis points)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={form.trading_pair_data.target_peg}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        trading_pair_data: { ...f.trading_pair_data, target_peg: e.target.value }
+                      }))}
+                      placeholder="10000 (1:1 peg)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-green-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-green-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-white/70 block mb-1">Deviation Threshold (bps)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      value={form.trading_pair_data.deviation_threshold_bps}
+                      onChange={e => setForm(f => ({ 
+                        ...f, 
+                        trading_pair_data: { ...f.trading_pair_data, deviation_threshold_bps: e.target.value }
+                      }))}
+                      placeholder="50 (0.5%)"
+                      disabled={creating}
+                      className="w-full bg-black/30 border border-green-500/30 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-green-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
             {form.proposal_type === 'AddTradingVenue' && (
-              <div className="space-y-3 p-3 bg-white/5 rounded-lg">
-                <h5 className="text-white/80 text-sm font-medium">Trading Venue Details</h5>
-                <div className="text-xs text-white/60 mb-2">
-                  Add a new DEX or trading venue for arbitrage opportunities
+              <div className="space-y-3 p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                <h5 className="text-purple-300 text-sm font-medium">🏢 Add Trading Venue</h5>
+                <div className="text-xs text-purple-200/80 mb-2">
+                  Add a new DEX or trading venue for the arbitrage bot to use.
                 </div>
                 <input
                   value={form.venue_data.name}
@@ -1034,7 +1089,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                   }))}
                   placeholder="Venue Name (e.g., StellarX, AquaDEX)"
                   disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
+                  className="w-full bg-black/30 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-purple-500/50 disabled:opacity-50"
                 />
                 <input
                   value={form.venue_data.address}
@@ -1044,7 +1099,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                   }))}
                   placeholder="Venue Contract Address"
                   disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
+                  className="w-full bg-black/30 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-purple-500/50 disabled:opacity-50"
                 />
                 <input
                   type="number"
@@ -1057,19 +1112,18 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                   }))}
                   placeholder="Fee in basis points (e.g., 30 = 0.3%)"
                   disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
+                  className="w-full bg-black/30 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-purple-500/50 disabled:opacity-50"
                 />
                 <input
-                  type="number"
-                  min="0"
+                  type="text"
                   value={form.venue_data.liquidity_threshold}
                   onChange={e => setForm(f => ({ 
                     ...f, 
                     venue_data: { ...f.venue_data, liquidity_threshold: e.target.value }
                   }))}
-                  placeholder="Min Liquidity Threshold (in tokens, e.g., 1000000)"
+                  placeholder="Min Liquidity Threshold (stroops)"
                   disabled={creating}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-white/20 disabled:opacity-50"
+                  className="w-full bg-black/30 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-purple-500/50 disabled:opacity-50"
                 />
               </div>
             )}
@@ -1078,7 +1132,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               <div className="space-y-3 p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
                 <h5 className="text-orange-300 text-sm font-medium">⚠️ Admin Transfer Details</h5>
                 <div className="text-xs text-orange-200/80 mb-2">
-                  Transfer admin control to a new address. This is a critical operation!
+                  Transfer admin control of the arbitrage bot to a new address. This is a critical operation!
                 </div>
                 <input
                   value={form.admin_address}
@@ -1099,12 +1153,12 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               <div className="space-y-3 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                 <h5 className="text-yellow-300 text-sm font-medium">⏸️ Pause Trading Pair</h5>
                 <div className="text-xs text-yellow-200/80 mb-2">
-                  Temporarily disable arbitrage for a specific stablecoin pair
+                  Temporarily disable arbitrage for a specific asset symbol.
                 </div>
                 <input
                   value={form.symbol_data}
                   onChange={e => setForm(f => ({ ...f, symbol_data: e.target.value }))}
-                  placeholder="Stablecoin Symbol to Pause (e.g., USDC)"
+                  placeholder="Asset Symbol to Pause (e.g., USDC)"
                   disabled={creating}
                   className="w-full bg-black/30 border border-yellow-500/30 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-yellow-500/50 disabled:opacity-50"
                 />
@@ -1118,8 +1172,8 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 </h5>
                 <div className="text-xs text-red-200/80">
                   {form.proposal_type === 'EmergencyStop' 
-                    ? 'Immediately halt all arbitrage operations. Use only in critical situations.'
-                    : 'Update the risk management parameters for the arbitrage system.'
+                    ? 'Immediately halt all arbitrage bot operations. Use only in critical situations.'
+                    : 'Update the risk management parameters for the arbitrage bot.'
                   }
                 </div>
               </div>
@@ -1180,7 +1234,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 <div>
                   <div className="text-white/90 font-medium">{p.title}</div>
                   <div className="text-white/50 text-xs">
-                    {proposalTypeTag} • ID #{proposalId} • by {p.proposer.slice(0, 8)}...
+                    🤖 {proposalTypeTag} • ID #{proposalId} • by {p.proposer.slice(0, 8)}...
                   </div>
                 </div>
                 <div className={`text-xs px-2 py-1 rounded-full ${
