@@ -7,7 +7,7 @@ export * as rpc from '@stellar/stellar-sdk/rpc';
 export declare const networks: {
     readonly testnet: {
         readonly networkPassphrase: "Test SDF Network ; September 2015";
-        readonly contractId: "CC5CA5FXTDWBEORPCRKYGHPPWWTYHGMVVOYJDLR23RFRX6PRXFGZBQJR";
+        readonly contractId: "CAUUC5EO23A6HHT6KVVAXOQILLBIFQY566VUY5HDH3O5J2OD43LSPEVD";
     };
 };
 export type ProposalType = {
@@ -102,10 +102,11 @@ export interface ArbitrageConfig {
     slippage_tolerance_bps: u32;
 }
 export interface StablecoinPair {
+    base_asset_address: string;
+    base_asset_symbol: string;
     deviation_threshold_bps: u32;
-    fiat_symbol: string;
-    stablecoin_address: string;
-    stablecoin_symbol: string;
+    quote_asset_address: string;
+    quote_asset_symbol: string;
     target_peg: i128;
 }
 export interface EnhancedStablecoinPair {
@@ -559,6 +560,63 @@ export interface Client {
          */
         simulate?: boolean;
     }) => Promise<AssembledTransaction<Option<Vote>>>;
+    /**
+     * Construct and simulate a upgrade_contract transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    upgrade_contract: ({ admin, new_wasm_hash }: {
+        admin: string;
+        new_wasm_hash: Buffer;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<null>>;
+    /**
+     * Construct and simulate a get_version transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    get_version: (options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<u32>>;
+    /**
+     * Construct and simulate a update_min_stake_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    update_min_stake_admin: ({ admin, new_min_stake }: {
+        admin: string;
+        new_min_stake: i128;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<null>>;
 }
 export declare class Client extends ContractClient {
     readonly options: ContractClientOptions;
@@ -591,5 +649,8 @@ export declare class Client extends ContractClient {
         get_admin: (json: string) => AssembledTransaction<string>;
         get_dao_config: (json: string) => AssembledTransaction<DAOConfig>;
         get_user_vote: (json: string) => AssembledTransaction<Option<Vote>>;
+        upgrade_contract: (json: string) => AssembledTransaction<null>;
+        get_version: (json: string) => AssembledTransaction<number>;
+        update_min_stake_admin: (json: string) => AssembledTransaction<null>;
     };
 }

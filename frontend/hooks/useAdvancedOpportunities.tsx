@@ -10,11 +10,12 @@ interface VenueRecommendation {
 }
 
 interface StablecoinPair {
-  stablecoin_symbol: string
-  fiat_symbol: string
-  stablecoin_address: string
-  target_peg: string
+  base_asset_address: string
+  base_asset_symbol: string
   deviation_threshold_bps: number
+  quote_asset_address: string
+  quote_asset_symbol: string
+  target_peg: string
 }
 
 interface BaseOpportunity {
@@ -24,7 +25,7 @@ interface BaseOpportunity {
   deviation_bps: number
   estimated_profit: string
   trade_direction: string
-  timestamp: string
+  timestamp: number
 }
 
 interface ArbitrageOpportunity {

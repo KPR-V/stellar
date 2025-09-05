@@ -7,6 +7,12 @@ if (typeof window !== 'undefined') {
     //@ts-ignore Buffer exists
     window.Buffer = window.Buffer || Buffer;
 }
+export const networks = {
+    testnet: {
+        networkPassphrase: "Test SDF Network ; September 2015",
+        contractId: "CBDI2TOD3VBXZLXQFF46V6F4WKV35TWFOSJUVAJ3VLETSTUPRLT42SZP",
+    }
+};
 export const DEXError = {
     1: { message: "InsufficientLiquidity" },
     2: { message: "SlippageExceeded" },
@@ -16,15 +22,9 @@ export const DEXError = {
 };
 export class Client extends ContractClient {
     options;
-    static async deploy(
-    /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
-    options) {
-        return ContractClient.deploy(null, options);
-    }
     constructor(options) {
         super(new ContractSpec(["AAAABAAAAAAAAAAAAAAACERFWEVycm9yAAAABQAAAAAAAAAVSW5zdWZmaWNpZW50TGlxdWlkaXR5AAAAAAAAAQAAAAAAAAAQU2xpcHBhZ2VFeGNlZWRlZAAAAAIAAAAAAAAAEERlYWRsaW5lRXhjZWVkZWQAAAADAAAAAAAAABNUb2tlbkFwcHJvdmFsRmFpbGVkAAAAAAQAAAAAAAAAClN3YXBGYWlsZWQAAAAAAAU=",
             "AAAAAQAAAAAAAAAAAAAAClN3YXBSZXN1bHQAAAAAAAQAAAAAAAAACmFtb3VudF9vdXQAAAAAAAsAAAAAAAAACWZlZXNfcGFpZAAAAAAAAAsAAAAAAAAAEHByaWNlX2ltcGFjdF9icHMAAAAEAAAAAAAAAAdzdWNjZXNzAAAAAAE=",
-            "AAAAAQAAAAAAAAAAAAAACFBhaXJJbmZvAAAABAAAAAAAAAAHZmVlX2JwcwAAAAAEAAAAAAAAAAtsYXN0X3VwZGF0ZQAAAAAGAAAAAAAAAAlyZXNlcnZlX2EAAAAAAAALAAAAAAAAAAlyZXNlcnZlX2IAAAAAAAAL",
             "AAAAAAAAAAAAAAASaW5pdGlhbGl6ZV90ZXN0bmV0AAAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABmNvbmZpZwAAAAAH0AAAAA9BcmJpdHJhZ2VDb25maWcAAAAAAAAAAAxyaXNrX21hbmFnZXIAAAATAAAAAA==",
             "AAAAAAAAAAAAAAAKaW5pdGlhbGl6ZQAAAAAABgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAZjb25maWcAAAAAB9AAAAAPQXJiaXRyYWdlQ29uZmlnAAAAAAAAAAAMZm9yZXhfb3JhY2xlAAAAEwAAAAAAAAANY3J5cHRvX29yYWNsZQAAAAAAABMAAAAAAAAADnN0ZWxsYXJfb3JhY2xlAAAAAAATAAAAAAAAAAxyaXNrX21hbmFnZXIAAAATAAAAAA==",
             "AAAAAAAAAAAAAAAXaW5pdGlhbGl6ZV91c2VyX2FjY291bnQAAAAAAwAAAAAAAAAEdXNlcgAAABMAAAAAAAAADmluaXRpYWxfY29uZmlnAAAAAAfQAAAAD0FyYml0cmFnZUNvbmZpZwAAAAAAAAAAC3Jpc2tfbGltaXRzAAAAB9AAAAAKUmlza0xpbWl0cwAAAAAAAA==",

@@ -1,4 +1,3 @@
-// api/contract/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../bindings/src'; 
 import { Networks } from '@stellar/stellar-sdk';
@@ -49,7 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!userAddress) {
         return NextResponse.json({ success: false, error: 'User address required for performance metrics' }, { status: 400 });
       }
-      const { days = 30 } = params; // Default to 30 days if not specified
+      const { days = 30 } = params; 
       return await getUserPerformanceMetrics(userAddress, days);
     }
 
@@ -58,7 +57,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === 'get_performance_metrics') {
-      const { days = 30 } = params; // Default to 30 days if not specified
+      const { days = 30 } = params; 
       return await getBotPerformanceMetrics(days);
     }
 
@@ -79,8 +78,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === 'execute_user_arbitrage') {
-      return await executeUserArbitrage(userAddress, params.opportunity, params.tradeAmount, params.venueAddress);
+      return await executeUserArbitrage(userAddress, params.tradeAmount, params.opportunity, params.venueAddress);
     }
+
+    if (action === 'prepare_real_arbitrage') {
+      return await prepareRealArbitrage(userAddress, params.tradeAmount, params.opportunity, params.venueAddress);
+    }
+
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
@@ -98,9 +102,7 @@ async function initializeUserAccountWithBindings(
   riskLimits: any
 ): Promise<NextResponse> {
   try {
-    // Create RPC server for transaction preparation
     const server = new SorobanRpc.Server(RPC_URL);
-
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -108,7 +110,6 @@ async function initializeUserAccountWithBindings(
       publicKey: userAddress
     });
 
-    // Build the transaction (simulate to get initial XDR)
     const result = await client.initialize_user_account({
       user: userAddress,
       initial_config: {
@@ -126,13 +127,11 @@ async function initializeUserAccountWithBindings(
         var_limit: BigInt(riskLimits.var_limit)
       }
     }, {
-      simulate: true // Auto-simulate to get XDR
+      simulate: true
     });
 
-    // Get the initial transaction XDR
     const initialTx = result.toXDR();
     
-    // Parse the transaction and prepare it with proper footprint and resources
     const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
     const preparedTransaction = await server.prepareTransaction(transaction);
 
@@ -161,11 +160,7 @@ async function getUserConfig(userAddress: string): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     });
 
-    const result = await client.get_user_config({
-      user: userAddress
-    }, {
-      simulate: true
-    });
+    const result = await client.get_user_config({user: userAddress}, {simulate: true});
 
     const configWithStrings = {
       enabled: result.result.enabled,
@@ -199,17 +194,14 @@ async function updateUserConfig(
   newConfig: any
 ): Promise<NextResponse> {
   try {
-    // Create RPC server for transaction preparation
     const server = new SorobanRpc.Server(RPC_URL);
-
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
       rpcUrl: RPC_URL,
-      publicKey: userAddress, // Ensure correct source account
+      publicKey: userAddress, 
     });
 
-    // Build the transaction (simulate to get initial XDR)
     const result = await client.update_user_config({
       user: userAddress,
       new_config: {
@@ -220,14 +212,9 @@ async function updateUserConfig(
         min_profit_bps: newConfig.min_profit_bps,
         slippage_tolerance_bps: newConfig.slippage_tolerance_bps
       }
-    }, {
-      simulate: true // Auto-simulate to get XDR
-    });
+    }, {simulate: true});
 
-    // Get the initial transaction XDR
     const initialTx = result.toXDR();
-    
-    // Parse the transaction and prepare it with proper footprint and resources
     const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
     const preparedTransaction = await server.prepareTransaction(transaction);
 
@@ -236,8 +223,7 @@ async function updateUserConfig(
       data: { 
         message: 'Update transaction prepared for signing',
         transactionXdr: preparedTransaction.toXDR()
-      }
-    });
+      }});
 
   } catch (error) {
     console.error('Error preparing update transaction:', error);
@@ -262,11 +248,8 @@ async function getUserTradeHistory(
     const result = await client.get_user_trade_history({
       user: userAddress,
       limit: limit
-    }, {
-      simulate: true
-    });
+    }, {simulate: true});
 
-    // ✅ Format the trade history data with proper price normalization
     const formattedTrades = result.result.map((trade: any) => ({
       executed_amount: normalizeOraclePrice(trade.executed_amount?.toString() || '0', 7),
       actual_profit: normalizeOraclePrice(trade.actual_profit?.toString() || '0', 7),
@@ -311,34 +294,20 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     });
 
-    const result = await client.get_user_balances({
-      user: userAddress
-    }, {
-      simulate: true
-    });
-
+    const result = await client.get_user_balances({user: userAddress}, {simulate: true});
     console.log('Raw contract result for balances:', safeStringify(result.result));
-
-    // ✅ Handle the Map<Address, i128> properly, converting BigInt to string
     const balancesWithStrings: { [key: string]: string } = {};
-    
-    console.log('Processing result.result:', safeStringify(result.result));
-    console.log('Type of result.result:', typeof result.result);
-    
+        
     if (result.result && typeof result.result === 'object') {
       console.log('Object.entries(result.result):', Object.entries(result.result));
-      
-      // Handle different formats that the Stellar SDK might return
-      for (const [key, value] of Object.entries(result.result)) {
-        console.log(`Processing entry: key="${key}", value="${value}", value type=${typeof value}`);
+            for (const [key, value] of Object.entries(result.result)) {
+            console.log(`Processing entry: key="${key}", value="${value}", value type=${typeof value}`);
         
         if (Array.isArray(value) && value.length === 2) {
-          // Handle format: [[tokenAddress, balance]] where value is [tokenAddress, balance]
           console.log('Detected array format with [tokenAddress, balance]');
           const [tokenAddress, balance] = value;
           console.log(`Extracted from array: tokenAddress="${tokenAddress}", balance="${balance}", balance type=${typeof balance}`);
           
-          // Convert balance to string (handle BigInt)
           let balanceStr = '';
           if (typeof balance === 'bigint') {
             balanceStr = balance.toString();
@@ -352,15 +321,12 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
           balancesWithStrings[tokenAddress] = balanceStr;
           
         } else if (typeof value === 'string' && value.includes(',')) {
-          // Handle format: {0: 'CDLZ...,1070000000'}
-          console.log('Detected comma-separated string format');
           const [tokenAddress, balance] = value.split(',');
           if (tokenAddress && balance) {
             console.log(`Extracted from string: tokenAddress="${tokenAddress}", balance="${balance}"`);
             balancesWithStrings[tokenAddress] = balance;
           }
         } else {
-          // Handle normal Map format where key is token address and value is BigInt/number
           console.log('Detected normal Map format');
           let balanceStr = '';
           if (typeof value === 'bigint') {
@@ -370,7 +336,6 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
           } else if (typeof value === 'string') {
             balanceStr = value;
           } else {
-            // Try to convert whatever it is to string
             balanceStr = String(value);
           }
           
@@ -464,39 +429,134 @@ function getTokenSymbolForOracle(tokenAddress: string): { symbol: string, name: 
     'native': { symbol: 'XLM', name: 'Stellar Lumens' },
     
     // SAC addresses (updated with user's actual addresses)
-    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQAHHAGCN6FM': { symbol: 'XLM', name: 'Stellar Lumens' }, // Old mapping
     'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': { symbol: 'XLM', name: 'Stellar Lumens' }, // Correct XLM address
-    'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' },
-    'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ': { symbol: 'EURC', name: 'Euro Coin' },
-    
-    // Issuer addresses
-    'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' },
+    'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' }, // USDC contract address
+    'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' }, // USDC issuer address
     'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' },
-  };
+      };
   
   return tokenMap[tokenAddress] || { symbol: 'Unknown', name: 'Unknown Token' };
 }
 
-// Helper function to fetch USD price from oracle via arbitrage contract
-async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Promise<number> {
+// Helper function to get real USD prices from Stellar reflector oracles
+async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
   try {
-    console.log(`Fetching oracle price for ${tokenSymbol} via arbitrage contract...`);
-
-    // Create arbitrage bot client to get oracle prices
+    console.log(`🔍 Fetching price from reflector oracle for ${tokenSymbol}...`);
+    
+    if (tokenSymbol === 'USDC') {
+      return 1.0; // USDC is pegged to $1 USD
+    }
+    
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
       rpcUrl: RPC_URL,
     });
 
-    // Get current opportunities which contain real oracle prices
+    // Oracle addresses from the contract constants
+    const CRYPTO_ORACLE = 'CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63';
+    const FOREX_ORACLE = 'CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W';
+    const STELLAR_ORACLE = 'CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP';
+
+    if (tokenSymbol === 'XLM') {
+      // Get XLM price from crypto oracle
+      try {
+        const result = await client.debug_test_oracle({
+          oracle_address: CRYPTO_ORACLE,
+          symbol: 'XLM',
+          asset_type: { tag: 'Symbol', values: undefined }
+        }, {
+          simulate: true
+        });
+
+        if (result.result && result.result.price) {
+          const price = normalizeOraclePrice(result.result.price.toString(), 7);
+          const priceNum = parseFloat(price);
+          
+          if (priceNum > 0.01 && priceNum < 2.0) { // Sanity check for XLM price
+            console.log(`✅ Got XLM price from crypto oracle: $${priceNum}`);
+            return priceNum;
+          }
+        }
+      } catch (oracleError) {
+        console.warn('Failed to get XLM from crypto oracle:', oracleError);
+      }
+      
+      // Fallback to reasonable XLM price
+      console.log('Using fallback XLM price');
+      return 0.12;
+    }
+    
+    if (tokenSymbol === 'EURC') {
+      // Get EUR/USD rate from forex oracle
+      try {
+        const result = await client.debug_test_oracle({
+          oracle_address: FOREX_ORACLE,
+          symbol: 'EUR',
+          asset_type: { tag: 'Symbol', values: undefined }
+        }, {
+          simulate: true
+        });
+
+        if (result.result && result.result.price) {
+          const rate = normalizeOraclePrice(result.result.price.toString(), 7);
+          const rateNum = parseFloat(rate);
+          
+          if (rateNum > 0.8 && rateNum < 1.5) { // Sanity check for EUR/USD rate
+            console.log(`✅ Got EUR/USD rate from forex oracle: $${rateNum}`);
+            return rateNum;
+          }
+        }
+      } catch (oracleError) {
+        console.warn('Failed to get EUR/USD from forex oracle:', oracleError);
+      }
+      
+      // Fallback to reasonable EUR/USD rate
+      console.log('Using fallback EUR/USD rate');
+      return 1.1;
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error(`❌ Error fetching price from oracle for ${tokenSymbol}:`, error);
+    
+    // Fallback to reasonable default prices
+    if (tokenSymbol === 'USDC') return 1.0;
+    if (tokenSymbol === 'XLM') return 0.12;
+    if (tokenSymbol === 'EURC') return 1.1;
+    return 0;
+  }
+}
+
+// Helper function to fetch USD price - now uses reflector oracles instead of external APIs
+async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Promise<number> {
+  try {
+    console.log(`🔍 Fetching price using reflector oracles for ${tokenSymbol}...`);
+    
+    // Use reflector oracles for real-time price data
+    const oraclePrice = await getRealUsdPrice(tokenSymbol);
+    
+    if (oraclePrice > 0) {
+      console.log(`✅ Got price from reflector oracle for ${tokenSymbol}: $${oraclePrice}`);
+      return oraclePrice;
+    }
+    
+    console.log(`⚠️ No oracle price found for ${tokenSymbol}, trying contract opportunities...`);
+
+    // Fallback to contract opportunities scan if oracle fails
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
     const opportunities = await client.scan_advanced_opportunities({
       simulate: true
     });
 
     console.log(`Got ${opportunities.result?.length || 0} opportunities from scan`);
 
-    // Parse opportunities to extract prices for the requested token
+    // Only use opportunity prices if they make sense (avoid the inflated values)
     if (opportunities.result && Array.isArray(opportunities.result)) {
       for (const opp of opportunities.result) {
         if (opp.base_opportunity?.pair) {
@@ -520,82 +580,37 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
           
           if (priceData) {
             const normalizedPrice = parseFloat(normalizeOraclePrice(priceData.price, 7));
-            console.log(`Found oracle price for ${tokenSymbol} from opportunities: $${normalizedPrice.toFixed(6)}`);
-            return normalizedPrice;
+            // Only use opportunity price if it's reasonable (not inflated)
+            if (tokenSymbol === 'XLM' && normalizedPrice > 0.01 && normalizedPrice < 2.0) {
+              console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
+              return normalizedPrice;
+            }
+            if (tokenSymbol === 'USDC' && normalizedPrice > 0.9 && normalizedPrice < 1.1) {
+              console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
+              return normalizedPrice;
+            }
+            if (tokenSymbol === 'EURC' && normalizedPrice > 0.8 && normalizedPrice < 1.5) {
+              console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
+              return normalizedPrice;
+            }
+            console.log(`❌ Opportunity price for ${tokenSymbol} seems unreasonable: $${normalizedPrice}, using oracle fallback`);
           }
         }
       }
     }
 
-    // If we didn't find the token in opportunities, use the oracle contract approach
-    console.log(`Token ${tokenSymbol} not found in current opportunities, attempting direct oracle calls...`);
-    
-    // Try to get a simple price using known mapping
-    const priceMapping: { [key: string]: number } = {
-      'XLM': await getXlmPriceFromMarket(),
-      'USDC': 1.0, // USDC is designed to be $1
-      'EURC': await getEurUsdRate(),
-    };
-    
-    if (priceMapping[tokenSymbol] !== undefined) {
-      console.log(`Using market-based price for ${tokenSymbol}: $${priceMapping[tokenSymbol]}`);
-      return priceMapping[tokenSymbol];
-    }
-
-    throw new Error(`Unable to fetch price for ${tokenSymbol}`);
+    // Final fallback to oracle prices
+    const fallbackPrice = await getRealUsdPrice(tokenSymbol);
+    console.log(`🔄 Using oracle fallback for ${tokenSymbol}: $${fallbackPrice}`);
+    return fallbackPrice;
 
   } catch (error) {
-    console.error(`Error fetching oracle price for ${tokenSymbol}:`, error);
+    console.error(`❌ Error fetching price for ${tokenSymbol}:`, error);
     
-    // Fallback to hardcoded prices only after all attempts fail
-    console.log(`Using fallback price for ${tokenSymbol} due to oracle failure`);
-    const fallbackPrices: { [key: string]: number } = {
-      'XLM': 0.12,   // Fallback XLM price
-      'USDC': 1.0,   // USDC should be stable
-      'EURC': 1.08,  // EUR/USD approximate rate
-    };
-    
-    return fallbackPrices[tokenSymbol] || 0;
-  }
-}
-
-// Helper to get XLM price from market data
-async function getXlmPriceFromMarket(): Promise<number> {
-  try {
-    // Call CoinGecko API for XLM price
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd');
-    const data = await response.json();
-    
-    if (data.stellar && data.stellar.usd) {
-      console.log(`Fetched XLM price from CoinGecko: $${data.stellar.usd}`);
-      return data.stellar.usd;
-    }
-    
-    throw new Error('Invalid response from CoinGecko');
-  } catch (error) {
-    console.error('Failed to fetch XLM price from CoinGecko:', error);
-    // Fallback to reasonable estimate
-    return 0.12;
-  }
-}
-
-// Helper to get EUR/USD rate
-async function getEurUsdRate(): Promise<number> {
-  try {
-    // Call a free forex API for EUR/USD rate
-    const response = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
-    const data = await response.json();
-    
-    if (data.rates && data.rates.USD) {
-      console.log(`Fetched EUR/USD rate from ExchangeRate API: ${data.rates.USD}`);
-      return data.rates.USD;
-    }
-    
-    throw new Error('Invalid response from ExchangeRate API');
-  } catch (error) {
-    console.error('Failed to fetch EUR/USD rate:', error);
-    // Fallback to reasonable estimate
-    return 1.08;
+    // Final fallback to default oracle prices
+    const finalFallback = await getRealUsdPrice(tokenSymbol);
+    console.log(`🔄 Using final oracle fallback for ${tokenSymbol}: $${finalFallback}`);
+    return finalFallback;
   }
 }
 
@@ -888,9 +903,7 @@ async function withdrawUserFunds(
         // Map known issuer addresses to asset codes
         const knownAssets: { [key: string]: string } = {
           'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',
-          'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU': 'USDC', // Old address
           'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC', // New EURC address
-          'CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGX47OAFQNI3OOQKAIJE22LZRY': 'EUROC' // Old EUROC address
         };
         
         if (knownAssets[tokenAddress]) {
@@ -1108,49 +1121,38 @@ function parseScvValue(scvData: any): any {
     return null;
   }
 
-  console.log('parseScvValue: Processing SCV type:', scvData._switch.name);
 
   switch (scvData._switch.name) {
     case 'scvVec':
-      console.log('parseScvValue: Processing scvVec with length:', scvData._value?.length || 0);
       return scvData._value ? scvData._value.map((item: any, index: number) => {
-        console.log(`parseScvValue: Processing vec item ${index}`);
         return parseScvValue(item);
       }) : [];
     
     case 'scvMap':
-      console.log('parseScvValue: Processing scvMap with entries:', scvData._value?.length || 0);
       const result: any = {};
       if (scvData._value) {
         scvData._value.forEach((entry: any, index: number) => {
-          console.log(`parseScvValue: Processing map entry ${index}`);
           const key = parseScvValue(entry._attributes.key);
           const val = parseScvValue(entry._attributes.val);
-          console.log(`parseScvValue: Map entry ${index} - key: ${key}, val type: ${typeof val}`);
           if (key !== null) {
             result[key] = val;
           }
         });
       }
-      console.log('parseScvValue: Map result keys:', Object.keys(result));
       return result;
     
     case 'scvSymbol':
       if (scvData._value && scvData._value.data) {
         const symbol = Buffer.from(scvData._value.data).toString('utf8');
-        console.log('parseScvValue: Symbol value:', symbol);
         return symbol;
       }
-      console.log('parseScvValue: Symbol fallback value:', scvData._value);
       return scvData._value || null;
     
     case 'scvU32':
-      console.log('parseScvValue: U32 value:', scvData._value);
       return scvData._value || 0;
     
     case 'scvU64':
       const u64Value = scvData._value ? scvData._value._value || scvData._value : 0;
-      console.log('parseScvValue: U64 value:', u64Value);
       return u64Value;
     
     case 'scvI128':
@@ -1158,14 +1160,11 @@ function parseScvValue(scvData: any): any {
         const hi = BigInt(scvData._value._attributes.hi._value || 0);
         const lo = BigInt(scvData._value._attributes.lo._value || 0);
         const result = (hi * BigInt('18446744073709551616')) + lo; // 2^64
-        console.log('parseScvValue: I128 value:', result.toString());
         return result;
       }
-      console.log('parseScvValue: I128 fallback to 0');
       return BigInt(0);
     
     case 'scvBool':
-      console.log('parseScvValue: Bool value:', scvData._value);
       return scvData._value || false;
     
     case 'scvAddress':
@@ -1176,7 +1175,6 @@ function parseScvValue(scvData: any): any {
             // Convert raw bytes to hex string
             const hexData = Buffer.from(contractId.data).toString('hex').toUpperCase();
             const address = `CONTRACT_${hexData}`;
-            console.log('parseScvValue: Contract address:', address);
             return address;
           }
         } else if (scvData._value._switch?.name === 'scAddressTypeAccount') {
@@ -1185,7 +1183,6 @@ function parseScvValue(scvData: any): any {
             // Convert raw bytes to hex string
             const hexData = Buffer.from(accountId._value.data).toString('hex').toUpperCase();
             const address = `ACCOUNT_${hexData}`;
-            console.log('parseScvValue: Account address:', address);
             return address;
           }
         }
@@ -1257,9 +1254,10 @@ function formatOpportunityData(opportunity: any): any {
     const formatted = {
       base_opportunity: {
         pair: {
-          stablecoin_symbol: bufferToString(pair.stablecoin_symbol),
-          fiat_symbol: bufferToString(pair.fiat_symbol),
-          stablecoin_address: bufferToString(pair.stablecoin_address),
+          base_asset_symbol: bufferToString(pair.base_asset_symbol || pair.stablecoin_symbol),
+          quote_asset_symbol: bufferToString(pair.quote_asset_symbol || pair.fiat_symbol),
+          base_asset_address: bufferToString(pair.base_asset_address || pair.stablecoin_address),
+          quote_asset_address: bufferToString(pair.quote_asset_address),
           target_peg: normalizeOraclePrice(pair.target_peg || 0, 4),
           deviation_threshold_bps: pair.deviation_threshold_bps || 0
         },
@@ -1268,7 +1266,7 @@ function formatOpportunityData(opportunity: any): any {
         deviation_bps: baseOpp.deviation_bps || 0,
         estimated_profit: normalizeOraclePrice(baseOpp.estimated_profit || 0, 7),
         trade_direction: bufferToString(baseOpp.trade_direction),
-        timestamp: baseOpp.timestamp?.toString() || '0'
+        timestamp: typeof baseOpp.timestamp === 'number' ? baseOpp.timestamp : parseInt(baseOpp.timestamp?.toString() || '0')
       },
       twap_price: opportunity.twap_price ? normalizeOraclePrice(opportunity.twap_price, 7) : null,
       confidence_score: opportunity.confidence_score || 0,
@@ -1291,316 +1289,7 @@ function formatOpportunityData(opportunity: any): any {
   }
 }
 
-async function executeUserArbitrage(
-  userAddress: string,
-  opportunity: any,
-  tradeAmount: string,
-  venueAddress: string
-): Promise<NextResponse> {
-  try {
-    console.log('Executing user arbitrage with parameters:', {
-      userAddress,
-      opportunity,
-      tradeAmount,
-      venueAddress
-    });
 
-    // First, check if user is initialized and has sufficient balance
-    const client = new Client({
-      contractId: CONTRACT_ADDRESS,
-      networkPassphrase: Networks.TESTNET,
-      rpcUrl: RPC_URL,
-      publicKey: userAddress
-    });
-
-    // Check user initialization
-    try {
-      const userConfig = await client.get_user_config({
-        user: userAddress
-      }, {
-        simulate: true
-      });
-      console.log('✅ User is initialized. Config retrieved successfully.');
-    } catch (initError) {
-      console.error('❌ User not initialized:', initError);
-      return NextResponse.json({
-        success: false,
-        error: 'User account not initialized',
-        message: 'Please initialize your arbitrage account before executing trades.',
-        details: {
-          action: 'initialize_user_account',
-          suggestion: 'Call the initialize_user_account function first with your trading configuration.'
-        }
-      }, { status: 400 });
-    }
-
-    // Check user balances
-    console.log('🔍 Checking user balances before trade execution...');
-    let userBalances: any = {};
-    try {
-      const balancesResult = await client.get_user_balances({
-        user: userAddress
-      }, {
-        simulate: true
-      });
-      
-      console.log('Raw balances result:', safeStringify(balancesResult.result));
-      userBalances = balancesResult.result || {};
-      
-      // Check if user has any deposits
-      const hasAnyBalance = Object.keys(userBalances).length > 0 && 
-        Object.values(userBalances).some((balance: any) => {
-          const balanceNum = typeof balance === 'bigint' ? Number(balance) : Number(balance || 0);
-          return balanceNum > 0;
-        });
-
-      if (!hasAnyBalance) {
-        // Convert BigInt values to strings for JSON serialization
-        const serializableBalances = Object.fromEntries(
-          Object.entries(userBalances).map(([key, value]) => [
-            key,
-            typeof value === 'bigint' ? value.toString() : String(value || '0')
-          ])
-        );
-
-        return NextResponse.json({
-          success: false,
-          error: 'No funds deposited in arbitrage contract',
-          message: 'You must deposit funds into the arbitrage contract before executing trades. Your contract balance is empty.',
-          details: {
-            action: 'deposit_funds',
-            suggestion: 'Use the deposit function to transfer tokens from your wallet to the arbitrage contract.',
-            currentBalances: serializableBalances
-          }
-        }, { status: 400 });
-      }
-
-      // Balance check passed - user has funds
-      console.log('✅ User has sufficient contract balance. Continuing with arbitrage execution...');
-      console.log('📊 User balances (first 3):', Object.entries(userBalances).slice(0, 3).map(([addr, bal]) => 
-        `${addr.substring(0, 8)}...: ${typeof bal === 'bigint' ? Number(bal) : bal}`
-      ).join(', '));
-
-    } catch (balanceError) {
-      console.error('❌ Error checking user balances:', balanceError);
-      return NextResponse.json({
-        success: false,
-        error: 'Unable to verify user balances',
-        message: 'Could not check your contract balance. This likely means no funds have been deposited or the user is not properly initialized.',
-        details: {
-          action: 'deposit_funds',
-          suggestion: 'Ensure you have deposited funds and are properly initialized.',
-          errorMessage: balanceError instanceof Error ? balanceError.message : 'Unknown balance error'
-        }
-      }, { status: 400 });
-    }
-   const resolveTokenAddress = (opportunity: any, isBase: boolean): string => {
-      const pair = opportunity.base_opportunity.pair;
-      if (isBase) {
-        // For base asset, use the base_asset_address from the pair
-        return pair.base_asset_address || getTokenAddressFromSymbol(pair.base_asset_symbol || pair.stablecoin_symbol);
-      } else {
-        // For quote asset, use the quote_asset_address from the pair
-        return pair.quote_asset_address || getTokenAddressFromSymbol(pair.quote_asset_symbol || pair.fiat_symbol);
-      }
-    };
-    // Determine which token is needed for the trade
-    const tradeAmountBigInt = BigInt(tradeAmount);
-    const requiredToken = opportunity.base_opportunity.trade_direction === "BUY" 
-      ? resolveTokenAddress(opportunity, false)  // Need quote asset to buy base
-      : resolveTokenAddress(opportunity, true);   // Need base asset to sell
-
-    console.log(`🎯 Trade direction: ${opportunity.base_opportunity.trade_direction}`);
-    console.log(`🎯 Required token for trade: ${requiredToken}`);
-    console.log(`🎯 Trade amount needed: ${tradeAmount}`);
-
-    // Check specific token balance
-    const userBalanceForToken = userBalances[requiredToken] || 0;
-    const userBalanceNum = typeof userBalanceForToken === 'bigint' ? Number(userBalanceForToken) : Number(userBalanceForToken || 0);
-    const tradeAmountNum = Number(tradeAmount);
-
-    console.log(`💰 User balance for required token: ${userBalanceNum}`);
-    console.log(`💰 Required amount: ${tradeAmountNum}`);
-
-    if (userBalanceNum < tradeAmountNum) {
-      const tokenSymbol = opportunity.base_opportunity.trade_direction === "BUY" 
-        ? (opportunity.base_opportunity.pair.quote_asset_symbol || opportunity.base_opportunity.pair.fiat_symbol)
-        : (opportunity.base_opportunity.pair.base_asset_symbol || opportunity.base_opportunity.pair.stablecoin_symbol);
-      
-      return NextResponse.json({
-        success: false,
-        error: 'Insufficient balance for trade',
-        message: `You need ${(tradeAmountNum / 1e7).toFixed(4)} ${tokenSymbol} but only have ${(userBalanceNum / 1e7).toFixed(4)} ${tokenSymbol} deposited in the contract.`,
-        details: {
-          action: 'deposit_funds',
-          requiredToken,
-          tokenSymbol,
-          userBalance: userBalanceNum.toString(),
-          requiredAmount: tradeAmountNum.toString(),
-          shortfall: (tradeAmountNum - userBalanceNum).toString()
-        }
-      }, { status: 400 });
-    }
-
-    console.log('✅ Sufficient balance confirmed. Proceeding with trade execution...');
-
-    // Helper function to get actual token address based on symbol
-    const getTokenAddressFromSymbol = (symbol: string): string => {
-      const tokenMap: { [key: string]: string } = {
-        // Updated with the actual addresses from the event log
-        'XLM': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA', // XLM from event log
-        'USDC': 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // USDC from event log
-        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO', // EURC testnet
-      };
-      return tokenMap[symbol] || tokenMap['XLM']; // Default to XLM if not found
-    };
-
-    // Helper function to resolve token address from opportunity data
- 
-
-    // Create RPC server for transaction preparation  
-    const server = new SorobanRpc.Server(RPC_URL);
-
-    // Convert trade amount to BigInt (assuming it's in the correct scale)
-    const tradeAmountForContract = BigInt(tradeAmount);
-
-    // Helper function to convert string to BigInt safely
-    const stringToBigInt = (value: string): bigint => {
-      // The value is already in scaled format from the contract scan
-      // Just remove decimals and convert to BigInt
-      const cleanValue = value.split('.')[0];
-      return BigInt(cleanValue);
-    };
-
-    // Create a properly structured opportunity for the contract
-    // Include all possible TradingVenue fields to satisfy both definitions
-    const contractOpportunity = {
-      base_opportunity: {
-        pair: {
-          base_asset_symbol: opportunity.base_opportunity.pair.stablecoin_symbol,
-          quote_asset_symbol: opportunity.base_opportunity.pair.fiat_symbol,
-          target_peg: stringToBigInt("10000"),
-          base_asset_address: resolveTokenAddress(opportunity, true),
-          quote_asset_address: resolveTokenAddress(opportunity, false),
-          deviation_threshold_bps: opportunity.base_opportunity.pair.deviation_threshold_bps || 50
-        },
-        stablecoin_price: stringToBigInt(opportunity.base_opportunity.stablecoin_price),
-        fiat_rate: stringToBigInt(opportunity.base_opportunity.fiat_rate),
-        deviation_bps: opportunity.base_opportunity.deviation_bps,
-        estimated_profit: stringToBigInt(opportunity.base_opportunity.estimated_profit),
-        trade_direction: opportunity.base_opportunity.trade_direction,
-        timestamp: stringToBigInt(opportunity.base_opportunity.timestamp)
-      },
-      twap_price: opportunity.twap_price ? stringToBigInt(opportunity.twap_price) : undefined,
-      confidence_score: opportunity.confidence_score,
-      max_trade_size: stringToBigInt(opportunity.max_trade_size),
-      venue_recommendations: [{
-        // Include fields from both TradingVenue definitions
-        address: venueAddress,
-        dex_address: venueAddress,
-        name: 'SoroswapRouter',
-        enabled: true,
-        fee_bps: 30,
-        liquidity_threshold: stringToBigInt('1000000000000'),
-        min_liquidity: stringToBigInt('1000000000000')
-      }]
-    };
-
-    console.log('Converted opportunity for contract:', contractOpportunity);
-
-    // Build the transaction (simulate to get initial XDR)
-    const result = await client.execute_user_arbitrage({
-      user: userAddress,
-      opportunity: contractOpportunity,
-      trade_amount: tradeAmountForContract,
-      venue_address: venueAddress
-    }, {
-      simulate: true
-    });
-
-    // Get the initial transaction XDR
-    const initialTx = result.toXDR();
-    
-    // Parse the transaction and prepare it with proper footprint and resources
-    const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
-    const preparedTransaction = await server.prepareTransaction(transaction);
-
-    console.log('Transaction prepared successfully:', {
-      transactionXdr: preparedTransaction.toXDR()
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        message: 'Arbitrage transaction prepared for signing',
-        transactionXdr: preparedTransaction.toXDR(),
-        tradeDetails: {
-          userAddress,
-          tradeAmount: tradeAmount,
-          venueAddress,
-          opportunityPair: opportunity?.base_opportunity?.pair?.stablecoin_symbol + '/' + opportunity?.base_opportunity?.pair?.fiat_symbol
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Error executing user arbitrage:', error);
-    
-    // Handle specific error types
-    if (error instanceof Error) {
-      // Handle balance-related errors from the contract
-      if (error.message.includes('Error(Object, UnexpectedSize)')) {
-        return NextResponse.json({
-          success: false,
-          error: 'Insufficient balance or uninitialized user account',
-          message: 'This error occurs when you don\'t have sufficient funds deposited in the arbitrage contract, or your account balance map is corrupted. The contract requires internal deposits to execute trades.',
-          details: {
-            errorType: 'Balance/Account Error',
-            suggestion: 'Deposit the required tokens (USDC, XLM, etc.) into your arbitrage contract account using the deposit function. Ensure you have more than the trade amount deposited.',
-            action: 'deposit_funds',
-            technicalDetails: 'Contract failed to access user balance map - likely empty or insufficient funds'
-          }
-        }, { status: 400 });
-      }
-
-      // Handle user not initialized
-      if (error.message.includes('User not initialized')) {
-        return NextResponse.json({
-          success: false,
-          error: 'User account not initialized',
-          message: 'Your arbitrage account has not been initialized. Please initialize your account first.',
-          details: {
-            errorType: 'Initialization Error',
-            action: 'initialize_user_account',
-            suggestion: 'Call the initialize_user_account function with your trading configuration and risk limits.'
-          }
-        }, { status: 400 });
-      }
-
-      // Handle insufficient balance
-      if (error.message.includes('INSUFFICIENT_USER_BALANCE')) {
-        return NextResponse.json({
-          success: false,
-          error: 'Insufficient user balance',
-          message: 'You don\'t have enough funds deposited in the arbitrage contract to execute this trade.',
-          details: {
-            errorType: 'Insufficient Balance',
-            action: 'deposit_funds',
-            suggestion: 'Deposit more tokens into the arbitrage contract before attempting this trade.'
-          }
-        }, { status: 400 });
-      }
-    }
-
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to execute arbitrage',
-      details: {
-        suggestion: 'Check that you have sufficient funds deposited and your account is properly initialized.'
-      }
-    }, { status: 500 });
-  }
-}
 
 async function scanAdvancedOpportunities(): Promise<NextResponse> {
   try {
@@ -1634,11 +1323,7 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
           
           // Parse the SCV data structure - check retval for the vector
           if (simulationResult && simulationResult.retval && simulationResult.retval._switch?.name === 'scvVec') {
-            console.log('SCV Vec detected in retval, parsing...');
             const rawOpportunities = parseScvValue(simulationResult.retval);
-            console.log('parseScvValue returned:', rawOpportunities ? 'data' : 'null');
-            console.log('parseScvValue type:', typeof rawOpportunities);
-            console.log('parseScvValue isArray:', Array.isArray(rawOpportunities));
             
             if (rawOpportunities) {
               console.log('Raw opportunities length/keys:', Array.isArray(rawOpportunities) ? rawOpportunities.length : Object.keys(rawOpportunities));
@@ -1646,17 +1331,11 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
             
             console.log('Parsed raw opportunities:', rawOpportunities?.length || 0);
             
-            if (Array.isArray(rawOpportunities)) {
-              console.log('Processing rawOpportunities array of length:', rawOpportunities.length);
-              
+            if (Array.isArray(rawOpportunities)) {              
               // Apply the formatting function to convert from parsed SCV to proper structure
               opportunities = rawOpportunities.map((opp, index) => {
-                console.log(`\n=== Processing opportunity ${index + 1} ===`);
-                console.log('Raw opportunity type:', typeof opp);
-                console.log('Raw opportunity keys:', opp && typeof opp === 'object' ? Object.keys(opp) : 'N/A');
                 
                 const formatted = formatOpportunityData(opp);
-                console.log(`Opportunity ${index + 1} formatted result:`, formatted ? 'SUCCESS' : 'FAILED');
                 
                 return formatted;
               }).filter(Boolean);
@@ -1714,5 +1393,607 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
   }
 }
 
+async function executeUserArbitrage(
+  userAddress: string,
+  tradeAmount: string,
+  opportunity: any,
+  venueAddress: string
+): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    // Convert trade amount to proper format (scaled by 10^7)
+    const scaledTradeAmount = BigInt(Math.floor(parseFloat(tradeAmount) * 1e7));
+
+    // Helper function to safely convert string to BigInt with scaling
+    const toBigInt = (value: string | number, scale: number = 1e7): bigint => {
+      if (!value || isNaN(parseFloat(value.toString()))) {
+        return BigInt(0);
+      }
+      return BigInt(Math.floor(parseFloat(value.toString()) * scale));
+    };
+
+    // Helper function to get correct Stellar testnet address for asset symbols
+    const getAddressForSymbol = (symbol: string, currentAddress: string): string => {
+      // If we already have a valid address, use it
+      if (currentAddress && currentAddress !== "UNKNOWN_ADDRESS" && currentAddress !== "") {
+        return currentAddress;
+      }
+
+      // Map symbols to their correct Stellar testnet CONTRACT addresses (for Soroswap DEX)
+      const symbolToAddress: { [key: string]: string } = {
+        'XLM': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC', // XLM contract address
+        'USDC': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', // USDC contract address (not issuer)
+        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO'
+      };
+
+      return symbolToAddress[symbol] || currentAddress;
+    };
+
+    // Helper function to get correct venue address
+    const getCorrectVenueAddress = (inputVenueAddress: string): string => {
+      // Known venue address mappings (correct formats)
+      const venueAddressMappings: { [key: string]: string } = {
+        // Soroswap router - fix common mistake of missing first 'C'
+        'CMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS': 'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS',
+        // Add the correct address to itself for reference
+        'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS': 'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS'
+      };
+
+      // Return the corrected address if mapping exists, otherwise return input
+      return venueAddressMappings[inputVenueAddress] || inputVenueAddress;
+    };
+
+    // Convert opportunity data to proper contract format with BigInt values
+    const contractOpportunity = {
+      base_opportunity: {
+        pair: {
+          base_asset_address: getAddressForSymbol(
+            opportunity.base_opportunity.pair.base_asset_symbol,
+            opportunity.base_opportunity.pair.base_asset_address
+          ),
+          base_asset_symbol: opportunity.base_opportunity.pair.base_asset_symbol,
+          deviation_threshold_bps: opportunity.base_opportunity.pair.deviation_threshold_bps,
+          quote_asset_address: getAddressForSymbol(
+            opportunity.base_opportunity.pair.quote_asset_symbol,
+            opportunity.base_opportunity.pair.quote_asset_address
+          ),
+          quote_asset_symbol: opportunity.base_opportunity.pair.quote_asset_symbol,
+          target_peg: toBigInt(opportunity.base_opportunity.pair.target_peg)
+        },
+        stablecoin_price: toBigInt(opportunity.base_opportunity.stablecoin_price),
+        fiat_rate: toBigInt(opportunity.base_opportunity.fiat_rate),
+        deviation_bps: opportunity.base_opportunity.deviation_bps,
+        estimated_profit: toBigInt(opportunity.base_opportunity.estimated_profit),
+        trade_direction: opportunity.base_opportunity.trade_direction,
+        timestamp: opportunity.base_opportunity.timestamp
+      },
+      confidence_score: opportunity.confidence_score,
+      max_trade_size: toBigInt(opportunity.max_trade_size),
+      twap_price: opportunity.twap_price ? toBigInt(opportunity.twap_price) : undefined,
+      venue_recommendations: opportunity.venue_recommendations.map((venue: any) => ({
+        address: venue.address,
+        enabled: venue.enabled,
+        fee_bps: venue.fee_bps,
+        liquidity_threshold: toBigInt(venue.liquidity_threshold, 1),
+        name: venue.name
+      }))
+    };
+
+    // Correct the venue address if needed
+    const correctedVenueAddress = getCorrectVenueAddress(venueAddress);
+
+    console.log('Contract opportunity with corrected addresses:', {
+      user: userAddress,
+      tradeAmount: scaledTradeAmount.toString(),
+      originalVenueAddress: venueAddress,
+      correctedVenueAddress: correctedVenueAddress,
+      baseAssetAddress: contractOpportunity.base_opportunity.pair.base_asset_address,
+      quoteAssetAddress: contractOpportunity.base_opportunity.pair.quote_asset_address,
+      baseSymbol: contractOpportunity.base_opportunity.pair.base_asset_symbol,
+      quoteSymbol: contractOpportunity.base_opportunity.pair.quote_asset_symbol
+    });
+
+    // Check if user is initialized before attempting to execute arbitrage
+    console.log('Checking if user is initialized...');
+    const checkClient = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+    });
+
+    try {
+      const userConfigCheck = await checkClient.get_user_config({
+        user: userAddress
+      }, {
+        simulate: true
+      });
+      console.log('User is initialized with config:', userConfigCheck.result);
+      
+      // Also check user balances to see if they have funds
+      try {
+        const userBalancesCheck = await checkClient.get_user_balances({
+          user: userAddress
+        }, {
+          simulate: true
+        });
+        console.log('User balances:', userBalancesCheck.result);
+        
+        // Check if user has sufficient balance for the trade
+        const balancesMap = userBalancesCheck.result;
+        console.log('Balances map type:', typeof balancesMap);
+        console.log('Balances map:', balancesMap);
+        
+        // Check if user has any funds in their internal contract account
+        let hasFunds = false;
+        if (balancesMap && Array.isArray(balancesMap)) {
+          // Handle array format: [[tokenAddress, balance], ...]
+          console.log('Processing balance array format:', balancesMap.length, 'entries');
+          for (const balanceEntry of balancesMap) {
+            if (Array.isArray(balanceEntry) && balanceEntry.length === 2) {
+              const [tokenAddress, balance] = balanceEntry;
+              console.log(`Processing balance entry: ${tokenAddress} = ${balance} (type: ${typeof balance})`);
+              
+              // Handle BigInt balance directly
+              let balanceAmount = 0n;
+              if (typeof balance === 'bigint') {
+                balanceAmount = balance;
+              } else if (typeof balance === 'string' || typeof balance === 'number') {
+                try {
+                  balanceAmount = BigInt(balance);
+                } catch (e) {
+                  console.log(`Failed to convert balance to BigInt: ${balance}`);
+                  continue;
+                }
+              }
+              
+              if (balanceAmount > 0n) {
+                hasFunds = true;
+                console.log(`Found funds: ${tokenAddress} has balance ${balanceAmount.toString()}`);
+                break;
+              }
+            }
+          }
+        } else if (balancesMap && typeof balancesMap === 'object') {
+          // Handle object format as fallback
+          const entries = Object.entries(balancesMap);
+          console.log('Processing balance object format:', entries.length, 'entries');
+          for (const [key, value] of entries) {
+            // Skip numeric keys that contain arrays (this was causing the error)
+            if (!isNaN(parseInt(key)) && Array.isArray(value)) {
+              // This is the array format wrapped in object indices - extract the array
+              const [tokenAddress, balance] = value;
+              console.log(`Processing indexed balance entry: ${tokenAddress} = ${balance} (type: ${typeof balance})`);
+              
+              let balanceAmount = 0n;
+              if (typeof balance === 'bigint') {
+                balanceAmount = balance;
+              } else if (typeof balance === 'string' || typeof balance === 'number') {
+                try {
+                  balanceAmount = BigInt(balance);
+                } catch (e) {
+                  console.log(`Failed to convert balance to BigInt: ${balance}`);
+                  continue;
+                }
+              }
+              
+              if (balanceAmount > 0n) {
+                hasFunds = true;
+                console.log(`Found funds in indexed format: ${tokenAddress} has balance ${balanceAmount.toString()}`);
+                break;
+              }
+            } else {
+              // Handle direct key-value pairs
+              console.log(`Processing direct balance entry: ${key} = ${value} (type: ${typeof value})`);
+              let balanceAmount = 0n;
+              if (typeof value === 'bigint') {
+                balanceAmount = value;
+              } else if (typeof value === 'string' || typeof value === 'number') {
+                try {
+                  balanceAmount = BigInt(value);
+                } catch (e) {
+                  console.log(`Failed to convert balance to BigInt: ${value}`);
+                  continue;
+                }
+              }
+              
+              if (balanceAmount > 0n) {
+                hasFunds = true;
+                console.log(`Found funds in direct format: ${key} has balance ${balanceAmount.toString()}`);
+                break;
+              }
+            }
+          }
+        }
+        
+        if (!hasFunds) {
+          return NextResponse.json({
+            success: false,
+            error: 'No funds found in your internal contract account. Please deposit funds first before executing trades. Use the deposit function to transfer tokens to your internal trading account.'
+          });
+        }
+
+        // Now check for specific token requirements for this trade
+        // Helper function to convert issuer address to contract address
+        const getContractAddressForAsset = (assetAddress: string): string => {
+          try {
+            // Handle the case where the assetAddress might already be a contract address
+            if (assetAddress.startsWith('C')) {
+              return assetAddress; // Already a contract address
+            }
+            
+            // Convert issuer address to contract address
+            const knownAssetMappings: { [key: string]: string } = {
+              'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', // USDC
+              'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC', // XLM (already contract address)
+            };
+            
+            return knownAssetMappings[assetAddress] || assetAddress;
+          } catch (error) {
+            console.log('Error converting asset address:', error);
+            return assetAddress;
+          }
+        };
+
+        // Determine which token will be needed for the trade
+        console.log('Opportunity structure check:', {
+          trade_direction: opportunity.base_opportunity?.trade_direction,
+          quote_asset_address: opportunity.base_opportunity?.pair?.quote_asset_address,
+          base_asset_address: opportunity.base_opportunity?.pair?.base_asset_address,
+          full_opportunity: opportunity
+        });
+
+        // ✅ Enhanced logic to handle UNKNOWN_ADDRESS cases
+        let requiredTokenIssuer = opportunity.base_opportunity.trade_direction === 'BUY' 
+          ? opportunity.base_opportunity.pair.quote_asset_address  // Need quote asset (USDC) to buy base asset (XLM)
+          : opportunity.base_opportunity.pair.base_asset_address;   // Need base asset (XLM) to sell for quote asset (USDC)
+
+        // ✅ Handle cases where addresses are UNKNOWN_ADDRESS or missing
+        if (!requiredTokenIssuer || requiredTokenIssuer === 'UNKNOWN_ADDRESS' || requiredTokenIssuer === '') {
+          console.log('Required token address not found in opportunity, using fallback logic');
+          console.log('Trade direction:', opportunity.base_opportunity.trade_direction);
+          
+          // For BUY trades, we typically need USDC to buy XLM
+          // For SELL trades, we typically need XLM to sell for USDC
+          const fallbackTokenIssuer = opportunity.base_opportunity.trade_direction === 'BUY' 
+            ? 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5'  // USDC issuer
+            : 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC'; // XLM contract
+          
+          requiredTokenIssuer = fallbackTokenIssuer;
+        }
+
+        console.log('Trade direction:', opportunity.base_opportunity.trade_direction);
+        console.log('Required token issuer address:', requiredTokenIssuer);
+        
+        const requiredTokenContract = getContractAddressForAsset(requiredTokenIssuer);
+        console.log('Required token contract address:', requiredTokenContract);
+        console.log('User has balances for tokens:', Array.isArray(balancesMap) ? balancesMap.map((entry: any) => entry[0]) : Object.keys(balancesMap || {}));
+
+        // ✅ Check if user has the required token with sufficient balance
+        let hasRequiredToken = false;
+        if (balancesMap && Array.isArray(balancesMap)) {
+          for (const balanceEntry of balancesMap) {
+            if (Array.isArray(balanceEntry) && balanceEntry.length === 2) {
+              const [tokenAddress, balance] = balanceEntry;
+              console.log(`Checking if ${tokenAddress} matches required ${requiredTokenContract}`);
+              
+              // Check both the contract address and issuer address
+              if ((tokenAddress === requiredTokenContract || tokenAddress === requiredTokenIssuer) && 
+                  BigInt(balance.toString()) >= BigInt(Math.floor(parseFloat(tradeAmount) * 1e7))) {
+                hasRequiredToken = true;
+                console.log(`✅ User has sufficient balance: ${tokenAddress} = ${balance.toString()} (need: ${BigInt(Math.floor(parseFloat(tradeAmount) * 1e7)).toString()})`);
+                break;
+              }
+            }
+          }
+        }
+
+        if (!hasRequiredToken) {
+          const tokenSymbol = requiredTokenIssuer === 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5' ? 'USDC' : 
+                             requiredTokenIssuer === 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC' ? 'XLM' : 'Unknown';
+          
+          return NextResponse.json({
+            success: false,
+            error: `Insufficient ${tokenSymbol} balance for this trade. You need ${tokenSymbol} but you don't have enough deposited. Please deposit more ${tokenSymbol} first.`,
+            details: {
+              requiredTokenIssuer: requiredTokenIssuer,
+              requiredTokenContract: requiredTokenContract,
+              tokenSymbol,
+              tradeAmount: tradeAmount,
+              tradeDirection: opportunity.base_opportunity.trade_direction,
+              userBalances: safeStringify(balancesMap),
+              message: `Looking for ${tokenSymbol} balance (contract: ${requiredTokenContract}, issuer: ${requiredTokenIssuer})`
+            }
+          });
+        }
+        
+      } catch (balanceError) {
+        console.log('Error checking user balances:', balanceError);
+        // If we can't check balances, it might indicate the Map corruption issue
+        return NextResponse.json({
+          success: false,
+          error: 'Error accessing user balance data. This might indicate a data corruption issue. Please try reinitializing your account.'
+        });
+      }
+      
+    } catch (configError) {
+      console.log('User is not initialized. Error:', configError);
+      return NextResponse.json({
+        success: false,
+        error: 'User account is not initialized. Please initialize your account first before executing trades.'
+      });
+    }
+
+    // Execute the arbitrage directly - the smart contract handles everything internally
+    const result = await client.execute_user_arbitrage({
+      user: userAddress,
+      opportunity: contractOpportunity,
+      trade_amount: scaledTradeAmount,
+      venue_address: correctedVenueAddress
+    }, {
+      simulate: true // This will simulate the execution and return results
+    });
+
+    console.log('Arbitrage execution result:', result);
+
+    // Parse the execution result
+    const executionData = result.result;
+
+    // Create a safe response object without BigInt serialization issues
+    const safeExecutionResult = {
+      success: true,
+      transactionXdr: result.toXDR(),
+      simulationData: {
+        latestLedger: result.simulation?.latestLedger,
+        events: result.simulation?.events?.length || 0
+      }
+    };
+
+    return new NextResponse(safeStringify({
+      success: true,
+      data: { 
+        message: 'Arbitrage trade executed successfully!',
+        tradeAmount: scaledTradeAmount.toString(),
+        executionResult: safeExecutionResult,
+        estimatedProfit: opportunity.base_opportunity.estimated_profit
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Error executing arbitrage:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to execute arbitrage trade'
+    });
+  }
+}
+
+async function prepareRealArbitrage(
+  userAddress: string,
+  tradeAmount: string,
+  opportunity: any,
+  venueAddress: string
+): Promise<NextResponse> {
+  try {
+    // ✅ STEP 1: Check if user has sufficient deposited funds FIRST
+    console.log('Checking user deposited funds before preparing real arbitrage...');
+    
+    const balanceResponse = await getUserBalances(userAddress);
+    const balanceData = await balanceResponse.json();
+
+    if (!balanceData.success) {
+      return NextResponse.json({
+        success: false,
+        error: 'Could not retrieve user balances. Please ensure you are initialized.',
+        action_required: 'check_initialization'
+      }, { status: 400 });
+    }
+
+    // Convert trade amount to proper format (scaled by 10^7)
+    const scaledTradeAmount = BigInt(Math.floor(parseFloat(tradeAmount) * 1e7));
+
+    // ✅ STEP 2: Determine required token and check balance
+    // For SELL direction: selling base asset (XLM) to get quote asset (USDC)
+    // For BUY direction: selling quote asset (USDC) to get base asset (XLM)
+    const isSellingBaseAsset = opportunity.base_opportunity.trade_direction === 'SELL';
+    const requiredTokenSymbol = isSellingBaseAsset 
+      ? opportunity.base_opportunity.pair.base_asset_symbol 
+      : opportunity.base_opportunity.pair.quote_asset_symbol;
+    
+    // Map to contract addresses
+    const getTokenAddress = (symbol: string) => {
+      const tokenMap: { [key: string]: string } = {
+        'XLM': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+        'USDC': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO'
+      };
+      return tokenMap[symbol] || symbol;
+    };
+
+    const requiredTokenAddress = getTokenAddress(requiredTokenSymbol);
+    const userBalance = BigInt(balanceData.data?.balances?.[requiredTokenAddress] || '0');
+    
+    console.log('🔍 Balance check for real arbitrage:', {
+      requiredToken: requiredTokenSymbol,
+      requiredTokenAddress,
+      userBalance: userBalance.toString(),
+      tradeAmount: scaledTradeAmount.toString(),
+      sufficient: userBalance >= scaledTradeAmount,
+      tradeDirection: opportunity.base_opportunity.trade_direction,
+      userBalanceFormatted: (Number(userBalance) / 1e7).toFixed(4),
+      tradeAmountFormatted: (Number(scaledTradeAmount) / 1e7).toFixed(4)
+    });
+
+    if (userBalance < scaledTradeAmount) {
+      const deficit = scaledTradeAmount - userBalance;
+      const deficitFormatted = (Number(deficit) / 1e7).toFixed(4);
+      const balanceFormatted = (Number(userBalance) / 1e7).toFixed(4);
+      const requiredFormatted = (Number(scaledTradeAmount) / 1e7).toFixed(4);
+      
+      return NextResponse.json({
+        success: false,
+        error: `❌ Insufficient deposited ${requiredTokenSymbol} balance for real arbitrage`,
+        message: `You need ${requiredFormatted} ${requiredTokenSymbol} but only have ${balanceFormatted} ${requiredTokenSymbol} deposited in the contract.`,
+        action_required: 'deposit_funds',
+        details: {
+          required_token: requiredTokenAddress,
+          required_symbol: requiredTokenSymbol,
+          current_balance: userBalance.toString(),
+          current_balance_formatted: balanceFormatted,
+          required_amount: scaledTradeAmount.toString(),
+          required_amount_formatted: requiredFormatted,
+          deficit_amount: deficit.toString(),
+          deficit_formatted: deficitFormatted,
+          instructions: `Please deposit at least ${deficitFormatted} ${requiredTokenSymbol} using the "Deposit Funds" feature before executing real arbitrage trades.`
+        }
+      }, { status: 400 });
+    }
+
+    console.log('✅ User has sufficient deposited funds, proceeding with real arbitrage preparation...');
+
+    const server = new SorobanRpc.Server(RPC_URL);
+    const client = new Client({
+      contractId: CONTRACT_ADDRESS,
+      networkPassphrase: Networks.TESTNET,
+      rpcUrl: RPC_URL,
+      publicKey: userAddress, // Set the user as the source account
+    });
+
+    console.log('Preparing real arbitrage transaction for:', {
+      user: userAddress,
+      tradeAmount: scaledTradeAmount.toString(),
+      contractId: CONTRACT_ADDRESS
+    });
+
+    // Helper functions (same as in executeUserArbitrage)
+    const toBigInt = (value: any, scale: number = 10000000): bigint => {
+      if (!value || isNaN(parseFloat(value.toString()))) {
+        return BigInt(0);
+      }
+      return BigInt(Math.floor(parseFloat(value.toString()) * scale));
+    };
+
+    const getAddressForSymbol = (symbol: string, currentAddress: string): string => {
+      if (currentAddress && currentAddress !== "UNKNOWN_ADDRESS" && currentAddress !== "") {
+        return currentAddress;
+      }
+      const symbolToAddress: { [key: string]: string } = {
+        'XLM': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+        'USDC': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+        'EURC': 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO'
+      };
+      return symbolToAddress[symbol] || currentAddress;
+    };
+
+    const getCorrectVenueAddress = (inputVenueAddress: string): string => {
+      const venueAddressMappings: { [key: string]: string } = {
+        'CMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS': 'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS',
+        'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS': 'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS'
+      };
+      return venueAddressMappings[inputVenueAddress] || inputVenueAddress;
+    };
+
+    // Convert opportunity data to proper contract format
+    const contractOpportunity = {
+      base_opportunity: {
+        pair: {
+          base_asset_address: getAddressForSymbol(
+            opportunity.base_opportunity.pair.base_asset_symbol,
+            opportunity.base_opportunity.pair.base_asset_address
+          ),
+          base_asset_symbol: opportunity.base_opportunity.pair.base_asset_symbol,
+          deviation_threshold_bps: opportunity.base_opportunity.pair.deviation_threshold_bps,
+          quote_asset_address: getAddressForSymbol(
+            opportunity.base_opportunity.pair.quote_asset_symbol,
+            opportunity.base_opportunity.pair.quote_asset_address
+          ),
+          quote_asset_symbol: opportunity.base_opportunity.pair.quote_asset_symbol,
+          target_peg: toBigInt(opportunity.base_opportunity.pair.target_peg)
+        },
+        stablecoin_price: toBigInt(opportunity.base_opportunity.stablecoin_price),
+        fiat_rate: toBigInt(opportunity.base_opportunity.fiat_rate),
+        deviation_bps: opportunity.base_opportunity.deviation_bps,
+        estimated_profit: toBigInt(opportunity.base_opportunity.estimated_profit),
+        trade_direction: opportunity.base_opportunity.trade_direction,
+        timestamp: opportunity.base_opportunity.timestamp
+      },
+      confidence_score: opportunity.confidence_score,
+      max_trade_size: toBigInt(opportunity.max_trade_size),
+      twap_price: opportunity.twap_price ? toBigInt(opportunity.twap_price) : undefined,
+      venue_recommendations: opportunity.venue_recommendations.map((venue: any) => ({
+        address: venue.address,
+        enabled: venue.enabled,
+        fee_bps: venue.fee_bps,
+        liquidity_threshold: toBigInt(venue.liquidity_threshold, 1),
+        name: venue.name
+      }))
+    };
+
+    const correctedVenueAddress = getCorrectVenueAddress(venueAddress);
+
+    console.log('Contract opportunity with corrected addresses:', {
+      user: userAddress,
+      tradeAmount: scaledTradeAmount.toString(),
+      originalVenueAddress: venueAddress,
+      correctedVenueAddress: correctedVenueAddress,
+      baseAssetAddress: contractOpportunity.base_opportunity.pair.base_asset_address,
+      quoteAssetAddress: contractOpportunity.base_opportunity.pair.quote_asset_address,
+      baseSymbol: contractOpportunity.base_opportunity.pair.base_asset_symbol,
+      quoteSymbol: contractOpportunity.base_opportunity.pair.quote_asset_symbol
+    });
+
+    // Prepare the transaction (WITHOUT simulation - this will be a real transaction)
+    const result = await client.execute_user_arbitrage({
+      user: userAddress,
+      opportunity: contractOpportunity,
+      trade_amount: scaledTradeAmount,
+      venue_address: correctedVenueAddress
+    }, {
+      simulate: false, // ✅ CRITICAL: Set to false for real execution
+    });
+
+    console.log('Real arbitrage transaction prepared:', result);
+
+    // ✅ CRITICAL: Even for real transactions, we need to simulate first to get proper transaction data
+    await result.simulate();
+
+    // Prepare the transaction for signing
+    const transaction = result.toXDR();
+    const preparedTransaction = await server.prepareTransaction(TransactionBuilder.fromXDR(transaction, Networks.TESTNET));
+
+    return new NextResponse(safeStringify({
+      success: true,
+      data: { 
+        message: 'Real arbitrage transaction prepared for signing',
+        transactionXdr: preparedTransaction.toXDR(),
+        tradeAmount: scaledTradeAmount.toString(),
+        estimatedProfit: opportunity.base_opportunity.estimated_profit,
+        details: {
+          baseAsset: contractOpportunity.base_opportunity.pair.base_asset_symbol,
+          quoteAsset: contractOpportunity.base_opportunity.pair.quote_asset_symbol,
+          tradeDirection: opportunity.base_opportunity.trade_direction,
+          venueAddress: correctedVenueAddress
+        }
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Error preparing real arbitrage:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to prepare real arbitrage transaction'
+    });
+  }
+}
 
 
