@@ -1666,6 +1666,7 @@ env.events().publish(
         trade_amount: i128,
         venue_address: &Address,
     ) -> TradeExecution {
+        env.current_contract_address().require_auth();
         let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
             (
                 opportunity.base_opportunity.pair.quote_asset_address.clone(),
