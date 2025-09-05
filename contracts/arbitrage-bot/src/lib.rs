@@ -1683,6 +1683,19 @@ env.events().publish(
         let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
         
         let router_address = Address::from_string(&String::from_str(env, crate::dex::SOROSWAP_ROUTER_TESTNET));
+
+        let token_client = TokenClient::new(env, &token_in);
+        let expiration_ledger = env.ledger().sequence() + 1000;
+        
+        token_client.approve(
+            &env.current_contract_address(),
+           &router_address,
+            &trade_amount,
+            &expiration_ledger,
+        );
+
+
+
         let dex_client = StellarDEXClient::new(env, &router_address);
     
         let path = Vec::from_array(env, [token_in, token_out]);
