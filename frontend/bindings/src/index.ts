@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
   testnet: {
     networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CBDI2TOD3VBXZLXQFF46V6F4WKV35TWFOSJUVAJ3VLETSTUPRLT42SZP",
+    contractId: "CAM2IYLPCGIRSOUAEAH4ZE3GDIDJJ2YPAUQ2VXFGZWHQIRHSVFGUDUOQ",
   }
 } as const
 
@@ -205,13 +205,10 @@ export interface TradingVenue {
   name: string;
 }
 
-
 export interface PriceData {
   price: i128;
   timestamp: u64;
 }
-
-export type Asset = {tag: "Stellar", values: readonly [string]} | {tag: "Other", values: readonly [string]};
 
 export interface Client {
   /**
@@ -976,6 +973,21 @@ export interface Client {
 
 }
 export class Client extends ContractClient {
+  static async deploy<T = Client>(
+    /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
+    options: MethodOptions &
+      Omit<ContractClientOptions, "contractId"> & {
+        /** The hash of the Wasm blob, which must already be installed on-chain. */
+        wasmHash: Buffer | string;
+        /** Salt used to generate the contract's ID. Passed through to {@link Operation.createCustomContract}. Default: random. */
+        salt?: Buffer | Uint8Array;
+        /** The format used to decode `wasmHash`, if it's provided as a string. */
+        format?: "hex" | "base64";
+      }
+  ): Promise<AssembledTransaction<T>> {
+    // @ts-ignore: ContractClient is extended but doesn't have deploy static method in types
+    return ContractClient.deploy(null, options)
+  }
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAABAAAAAAAAAAAAAAACERFWEVycm9yAAAABQAAAAAAAAAVSW5zdWZmaWNpZW50TGlxdWlkaXR5AAAAAAAAAQAAAAAAAAAQU2xpcHBhZ2VFeGNlZWRlZAAAAAIAAAAAAAAAEERlYWRsaW5lRXhjZWVkZWQAAAADAAAAAAAAABNUb2tlbkFwcHJvdmFsRmFpbGVkAAAAAAQAAAAAAAAAClN3YXBGYWlsZWQAAAAAAAU=",

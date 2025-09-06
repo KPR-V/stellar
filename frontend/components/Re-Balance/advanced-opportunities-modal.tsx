@@ -151,21 +151,22 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
         ]
       }
 
-      console.log('Preparing real arbitrage transaction:', {
+      console.log('🚀 Starting arbitrage execution:', {
         userAddress,
         tradeAmount,
         opportunity: opportunityWithHardcodedVenue,
         venueAddress: "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS"
       })
 
-      // Step 1: Prepare the real transaction (not simulated)
+      // Step 1: Prepare the transaction for the contract's execute_user_arbitrage function
+      console.log('� Step 1: Preparing contract transaction...')
       const prepareResponse = await fetch('/api/contract', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          action: 'prepare_real_arbitrage',
+          action: 'execute_user_arbitrage',
           userAddress,
           tradeAmount,
           opportunity: opportunityWithHardcodedVenue,
@@ -184,16 +185,27 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
       }
 
       const transactionXdr = prepareResult.data.transactionXdr
-      console.log('Transaction prepared successfully, now signing with wallet...')
+      const transactionFee = prepareResult.data.transactionFee
+      const tradeDetails = prepareResult.data.tradeDetails
+
+      console.log('✅ Transaction prepared successfully:', {
+        hasXdr: !!transactionXdr,
+        estimatedFee: transactionFee?.xlm,
+        tradeAmount: tradeDetails?.amount,
+        direction: tradeDetails?.direction
+      })
 
       // Step 2: Sign the transaction with the user's wallet
+      console.log('🔐 Step 2: Requesting wallet signature...')
+      
       const walletResponse = await walletKit.signTransaction(transactionXdr, {
         networkPassphrase: "Test SDF Network ; September 2015"
       })
 
-      console.log('Transaction signed successfully, now submitting to network...')
+      console.log('✅ Transaction signed successfully, now submitting to network...')
 
       // Step 3: Submit the signed transaction to the network
+      console.log('📡 Step 3: Submitting transaction to Stellar network...')
       const submitResponse = await fetch('/api/contract/submit', {
         method: 'POST',
         headers: {
@@ -209,26 +221,56 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
       if (submitResult.success) {
         setExecutionResult({
           success: true,
-          message: `✅ Arbitrage trade executed successfully! Transaction hash: ${submitResult.data.hash}`,
+          message: `✅ Arbitrage trade executed successfully! 
+            
+🎯 Transaction Details:
+• Hash: ${submitResult.data.hash}
+• Status: ${submitResult.data.status}
+• Direction: ${tradeDetails?.direction}
+• Amount: ${parseFloat(tradeDetails?.amount || '0') / 1e7} ${tradeDetails?.baseAsset}
+• Estimated Profit: ${parseFloat(prepareResult.data.estimatedProfit || '0') / 1e7}
+• Fee Paid: ${transactionFee?.xlm || 'Unknown'} XLM
+
+🚀 The contract has executed your arbitrage trade on the Stellar network!`,
           transactionXdr: walletResponse.signedTxXdr
         })
         
-        console.log('🎉 Real arbitrage trade executed successfully!', {
+        console.log('🎉 Arbitrage trade executed successfully!', {
           hash: submitResult.data.hash,
           status: submitResult.data.status,
-          contractStatus: submitResult.data.contractStatus
+          contractStatus: submitResult.data.contractStatus,
+          tradeDetails: tradeDetails
         })
       } else {
         setExecutionResult({
           success: false,
-          message: submitResult.error || 'Failed to submit transaction to network'
+          message: `❌ Failed to submit transaction: ${submitResult.error || 'Unknown error'}
+          
+The transaction was signed but could not be submitted to the network. Please try again.`
         })
       }
     } catch (error) {
-      console.error('Error executing real arbitrage trade:', error)
+      console.error('❌ Error executing real arbitrage trade:', error)
+      
+      let errorMessage = 'Unknown error occurred'
+      if (error instanceof Error) {
+        errorMessage = error.message
+        
+        // Handle specific wallet errors
+        if (errorMessage.includes('User declined')) {
+          errorMessage = 'Transaction was cancelled by user'
+        } else if (errorMessage.includes('network')) {
+          errorMessage = 'Network error - please check your connection and try again'
+        } else if (errorMessage.includes('insufficient')) {
+          errorMessage = 'Insufficient funds to execute this trade'
+        }
+      }
+      
       setExecutionResult({
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error occurred'
+        message: `❌ Error: ${errorMessage}
+        
+Please check your wallet connection and try again. If the problem persists, the arbitrage opportunity may have expired.`
       })
     } finally {
       setIsExecuting(false)
@@ -402,24 +444,34 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
 
               {/* Execution Result */}
               {executionResult && (
-                <div className={`border rounded-lg p-3 ${
+                <div className={`border rounded-lg p-4 ${
                   executionResult.success 
                     ? 'bg-green-500/10 border-green-500/30' 
                     : 'bg-red-500/10 border-red-500/30'
                 }`}>
-                  <div className={`flex items-center gap-2 text-sm ${
+                  <div className={`flex items-center gap-2 text-sm mb-2 ${
                     executionResult.success ? 'text-green-400' : 'text-red-400'
                   }`}>
                     <AlertCircle size={16} />
                     <span className="font-medium">
-                      {executionResult.success ? 'Success' : 'Error'}
+                      {executionResult.success ? 'Transaction Successful' : 'Execution Failed'}
                     </span>
                   </div>
-                  <p className={`text-sm mt-1 ${
+                  <div className={`text-sm whitespace-pre-line ${
                     executionResult.success ? 'text-green-300' : 'text-red-300'
                   }`}>
                     {executionResult.message}
-                  </p>
+                  </div>
+                  {executionResult.success && (
+                    <div className="mt-3 pt-3 border-t border-green-500/20">
+                      <div className="text-xs text-green-400 mb-1">Next Steps:</div>
+                      <div className="text-xs text-green-300">
+                        • Your arbitrage trade has been submitted to the Stellar network
+                        • You can view the transaction details using the hash above
+                        • Check your wallet balance to see the updated funds
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

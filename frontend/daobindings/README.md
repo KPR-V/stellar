@@ -9,6 +9,7 @@ soroban contract bindings ts \
   --rpc-url https://soroban-testnet.stellar.org:443 \
   --network-passphrase "Test SDF Network ; September 2015" \
   --contract-id CCTY5KAMW3SKZD56YMZ7HQTZ6FZKHS3CUDEEFWCS6QC5PSMOFFUGTGCO \
+  --contract-id CCTY5KAMW3SKZD56YMZ7HQTZ6FZKHS3CUDEEFWCS6QC5PSMOFFUGTGCO \
   --output-dir ./path/to/daobindings
 ```
 

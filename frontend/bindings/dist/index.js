@@ -10,7 +10,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
     testnet: {
         networkPassphrase: "Test SDF Network ; September 2015",
-        contractId: "CBDI2TOD3VBXZLXQFF46V6F4WKV35TWFOSJUVAJ3VLETSTUPRLT42SZP",
+        contractId: "CAM2IYLPCGIRSOUAEAH4ZE3GDIDJJ2YPAUQ2VXFGZWHQIRHSVFGUDUOQ",
     }
 };
 export const DEXError = {
@@ -22,6 +22,12 @@ export const DEXError = {
 };
 export class Client extends ContractClient {
     options;
+    static async deploy(
+    /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
+    options) {
+        // @ts-ignore: ContractClient is extended but doesn't have deploy static method in types
+        return ContractClient.deploy(null, options);
+    }
     constructor(options) {
         super(new ContractSpec(["AAAABAAAAAAAAAAAAAAACERFWEVycm9yAAAABQAAAAAAAAAVSW5zdWZmaWNpZW50TGlxdWlkaXR5AAAAAAAAAQAAAAAAAAAQU2xpcHBhZ2VFeGNlZWRlZAAAAAIAAAAAAAAAEERlYWRsaW5lRXhjZWVkZWQAAAADAAAAAAAAABNUb2tlbkFwcHJvdmFsRmFpbGVkAAAAAAQAAAAAAAAAClN3YXBGYWlsZWQAAAAAAAU=",
             "AAAAAQAAAAAAAAAAAAAAClN3YXBSZXN1bHQAAAAAAAQAAAAAAAAACmFtb3VudF9vdXQAAAAAAAsAAAAAAAAACWZlZXNfcGFpZAAAAAAAAAsAAAAAAAAAEHByaWNlX2ltcGFjdF9icHMAAAAEAAAAAAAAAAdzdWNjZXNzAAAAAAE=",
