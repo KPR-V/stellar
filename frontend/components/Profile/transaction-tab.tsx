@@ -117,7 +117,7 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
     <div className="p-6 space-y-6 font-raleway">
       <div className="flex justify-between items-center">
         <h3 className="font-medium text-white/90 text-lg font-raleway">
-          Transaction History
+          Trade History
           {trades.length > 0 && (
             <span className="ml-2 text-white/50 text-sm">({trades.length} total)</span>
           )}
@@ -149,14 +149,14 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
       {/* Loading State */}
       {isLoading && (
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-8 border border-white/5 text-center">
-          <div className="text-white/50 text-sm font-medium">Loading transactions...</div>
+          <div className="text-white/50 text-sm font-medium">Loading Trades...</div>
         </div>
       )}
 
       {/* Error State */}
       {error && !isLoading && (
         <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-5 border border-red-500/30">
-          <h4 className="text-red-400 text-sm font-medium mb-2">Error Loading Transactions</h4>
+          <h4 className="text-red-400 text-sm font-medium mb-2">Error Loading Trades</h4>
           <p className="text-red-300/80 text-xs mb-3">{error}</p>
           <button 
             onClick={fetchTradeHistory}
@@ -171,17 +171,17 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
       {!isLoading && !error && filteredTrades.length === 0 && (
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-8 border border-white/5 text-center">
           <Receipt className="w-12 h-12 text-white/30 mx-auto mb-4" />
-          <div className="text-white/50 text-sm font-medium">No transactions to display</div>
+          <div className="text-white/50 text-sm font-medium">No Trades to display</div>
           <p className="text-white/30 text-xs mt-2">
             {trades.length === 0 
-              ? 'Your transaction history will appear here'
-              : 'No transactions match your current filter'
+              ? 'Your Trade history will appear here'
+              : 'No Trades match your current filter'
             }
           </p>
         </div>
       )}
 
-      {/* Transaction List */}
+      {/* Trade List */}
       {!isLoading && !error && filteredTrades.length > 0 && (
         <div className="space-y-3">
           {filteredTrades.map((trade, index) => (

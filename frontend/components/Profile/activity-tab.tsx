@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from 'react'
-import { Clock, ArrowUpRight, ArrowDownRight, Plus, Minus, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Minus, ChevronDown, ChevronRight } from 'lucide-react'
 import { useWallet } from '../../hooks/useWallet'
 
 interface ActivityTabProps {
@@ -575,47 +575,6 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
                   >
                     {isLoading ? 'Processing...' : 'Confirm Withdrawal'}
                   </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Activity Section */}
-      <div className="space-y-4">
-        <h3 className="font-medium text-white/90 text-lg font-raleway">Recent Activity</h3>
-        
-        <div className="space-y-3">
-          <div className="bg-black/40 backdrop-blur-sm rounded-xl p-4 border border-white/5 hover:border-white/8 transition-all duration-300">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
-                <ArrowUpRight className="w-5 h-5 text-white/70" />
-              </div>
-              <div className="flex-1">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-white/80 text-sm font-medium">Received XLM</p>
-                    <p className="text-white/40 text-xs">2 hours ago</p>
-                  </div>
-                  <p className="text-white/90 text-sm font-medium">+100.00 XLM</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-black/40 backdrop-blur-sm rounded-xl p-4 border border-white/5 hover:border-white/8 transition-all duration-300">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
-                <ArrowDownRight className="w-5 h-5 text-white/70" />
-              </div>
-              <div className="flex-1">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-white/80 text-sm font-medium">Sent USDC</p>
-                    <p className="text-white/40 text-xs">5 hours ago</p>
-                  </div>
-                  <p className="text-white/70 text-sm font-medium">-50.00 USDC</p>
                 </div>
               </div>
             </div>

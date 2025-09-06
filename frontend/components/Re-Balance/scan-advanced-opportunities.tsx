@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { RefreshCw, Clock, TrendingUp, TrendingDown, ExternalLink, AlertCircle } from 'lucide-react'
+import { Clock, TrendingUp, TrendingDown, AlertCircle, Info, X } from 'lucide-react'
 import useAdvancedOpportunities from '../../hooks/useAdvancedOpportunities'
 import AdvancedOpportunitiesModal from './advanced-opportunities-modal'
 
@@ -50,7 +50,9 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
   const [isLoading, setIsLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [showPairsTooltip, setShowPairsTooltip] = useState(false)
+  const [pairs, setPairs] = useState<StablecoinPair[]>([])
+  const [isPairsLoading, setIsPairsLoading] = useState(false)
   
   // Use the advanced opportunities hook
   const { isModalOpen, selectedOpportunity, openModal, closeModal } = useAdvancedOpportunities()
@@ -104,19 +106,19 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
     }
   }
 
-  // Auto-refresh every 60 seconds
+
+
+  // Auto-refresh every 120 seconds
   useEffect(() => {
     // Initial fetch
     fetchOpportunities()
 
-    if (!autoRefresh) return
-
     const interval = setInterval(() => {
       fetchOpportunities()
-    }, 60000) // 60 seconds
+    }, 120000) // 120 seconds
 
     return () => clearInterval(interval)
-  }, [autoRefresh, onOpportunitiesChange])
+  }, [onOpportunitiesChange])
 
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp * 1000).toLocaleTimeString()
@@ -160,45 +162,23 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 font-raleway">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-white/90 text-lg font-medium mb-1">
-            Advanced Arbitrage Opportunities
+          <h3 className="text-white/80 text-lg font-medium mb-1">
+            Arbitrage Opportunities
           </h3>
-          <p className="text-white/50 text-sm">
-            Real-time arbitrage opportunities across all configured pairs
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          {/* Auto-refresh toggle */}
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-              autoRefresh
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                : 'bg-white/10 text-white/50 border border-white/20'
-            }`}
-          >
-            Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
-          </button>
-
-          {/* Manual refresh */}
-          <button
-            onClick={fetchOpportunities}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-white/70 transition-all disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2 relative">
+            <p className="text-white/40 text-sm">
+              Real-time opportunities across configured pairs
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Status */}
-      <div className="flex items-center gap-4 text-sm text-white/60">
+      <div className="flex items-center gap-4 text-sm text-white/50">
         {lastUpdated && (
           <div className="flex items-center gap-2">
             <Clock size={14} />
@@ -208,52 +188,50 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
         
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${
-            opportunities.length > 0 ? 'bg-green-400 animate-pulse' : 'bg-gray-500'
+            opportunities.length > 0 ? 'bg-white/50' : 'bg-white/20'
           }`} />
           {opportunities.length} opportunities found
         </div>
-      </div>
-
-      {/* Error */}
+      </div>      {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-red-400">
+        <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-white/70">
             <AlertCircle size={16} />
             <span className="text-sm font-medium">Error</span>
           </div>
-          <p className="text-red-300 text-sm mt-1">{error}</p>
+          <p className="text-white/60 text-sm mt-1">{error}</p>
         </div>
       )}
 
       {/* Loading State */}
       {isLoading && opportunities.length === 0 && (
-        <div className="text-center py-12">
-          <RefreshCw className="w-8 h-8 text-white/40 animate-spin mx-auto mb-3" />
-          <p className="text-white/60 text-sm">Scanning for opportunities...</p>
+        <div className="text-center py-16">
+          <div className="w-8 h-8 border-2 border-white/10 border-t-white/40 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white/50 text-base">Scanning for opportunities...</p>
         </div>
       )}
 
       {/* Empty State */}
       {!isLoading && !error && opportunities.length === 0 && (
-        <div className="text-center py-12">
-          <TrendingUp className="w-12 h-12 text-white/30 mx-auto mb-4" />
-          <h4 className="text-white/60 font-medium mb-2">No Opportunities Found</h4>
-          <p className="text-white/40 text-sm">
+        <div className="text-center py-16">
+          <TrendingUp className="w-16 h-16 text-white/20 mx-auto mb-6" />
+          <h4 className="text-white/60 font-medium text-lg mb-3">No Opportunities Found</h4>
+          <p className="text-white/40 text-base max-w-md mx-auto leading-relaxed">
             No arbitrage opportunities detected at the moment.<br />
             The system will continue monitoring for new opportunities.
           </p>
         </div>
       )}
 
-      {/* Opportunities Table - Search Modal Style */}
+      {/* Opportunities Table - Modern Search Modal Style */}
       {opportunities.length > 0 && (
-        <div className="bg-black/20 rounded-xl backdrop-blur border border-white/10">
+        <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-white/5 overflow-hidden">
           {/* Table Header */}
-          <div className="flex items-center p-4 border-b border-white/10 text-white/60 text-sm font-medium">
-            <div className="flex-1">Pair</div>
-            <div className="w-24 text-center">Direction</div>
-            <div className="w-32 text-right">Estimated Profit</div>
-            <div className="w-24 text-right">Deviation</div>
+          <div className="flex items-center px-6 py-3 border-b border-white/5 bg-black/20">
+            <div className="flex-1 text-white/60 text-sm font-medium">Pair</div>
+            <div className="w-24 text-center text-white/60 text-sm font-medium">Direction</div>
+            <div className="w-28 text-right text-white/60 text-sm font-medium">Profit</div>
+            <div className="w-24 text-right text-white/60 text-sm font-medium">Deviation</div>
           </div>
 
           {/* Table Body */}
@@ -271,64 +249,51 @@ const ScanAdvancedOpportunities: React.FC<ScanAdvancedOpportunitiesProps> = ({
                 onClick={() => openModal(opportunity)}
                 className="
                   flex items-center
-                  p-4 
+                  px-6 py-4
                   hover:bg-black/30 
                   transition-all 
-                  duration-300
+                  duration-200
                   cursor-pointer
                   group
-                  hover:scale-[1.01]
-                  transform-gpu
                 "
               >
                 {/* Pair */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                      {(opportunity.base_opportunity.pair.base_asset_symbol || 'N/A').slice(0, 2)}
-                    </div>
-                    <div>
-                      <div className="text-white font-medium text-sm">
-                        {opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'}/{opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}
-                      </div>
-                      <div className="text-white/50 text-xs">
-                        {opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'} to {opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}
-                      </div>
-                    </div>
+                  <div className="text-white/80 font-medium text-base group-hover:text-white/90 transition-colors">
+                    {opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'}/{opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}
+                  </div>
+                  <div className="text-white/40 text-sm mt-0.5 group-hover:text-white/50 transition-colors">
+                    {opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'} → {opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}
                   </div>
                 </div>
 
                 {/* Direction */}
-                <div className="w-24 text-center">
-                  <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                <div className="w-24 flex justify-center">
+                  <div className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium border transition-all ${
                     opportunity.base_opportunity.trade_direction === 'BUY' 
-                      ? 'bg-green-500/20 text-green-400' 
-                      : 'bg-red-500/20 text-red-400'
+                      ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                      : 'bg-red-500/10 text-red-400 border-red-500/20'
                   }`}>
-                    {opportunity.base_opportunity.trade_direction === 'BUY' 
-                      ? <TrendingUp size={12} /> 
-                      : <TrendingDown size={12} />
-                    }
                     {opportunity.base_opportunity.trade_direction || 'N/A'}
                   </div>
                 </div>
 
                 {/* Estimated Profit */}
-                <div className="w-32 text-right">
-                  <div className="text-green-400 font-medium text-sm">
+                <div className="w-28 text-right">
+                  <div className="text-white/80 font-medium text-base group-hover:text-white/90 transition-colors">
                     ${formatLargeNumber(opportunity.base_opportunity.estimated_profit || '0')}
                   </div>
-                  <div className="text-white/50 text-xs">
-                    Est. profit
+                  <div className="text-white/30 text-xs mt-0.5 group-hover:text-white/40 transition-colors">
+                    Estimated
                   </div>
                 </div>
 
                 {/* Deviation */}
                 <div className="w-24 text-right">
-                  <div className="text-white font-medium text-sm">
+                  <div className="text-white/80 font-medium text-base group-hover:text-white/90 transition-colors">
                     {formatDeviationBps(opportunity.base_opportunity.deviation_bps || 0)}
                   </div>
-                  <div className="text-white/50 text-xs">
+                  <div className="text-white/30 text-xs mt-0.5 group-hover:text-white/40 transition-colors">
                     Deviation
                   </div>
                 </div>

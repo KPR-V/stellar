@@ -26,7 +26,7 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
 }) => {
   const { isModalOpen, closeModal } = useRebalance()
   const modalRef = useRef<HTMLDivElement>(null)
-  const [activeTab, setActiveTab] = useState('Arbitrage-Bot')
+  const [activeTab, setActiveTab] = useState('Arbitrage-Manual')
   const [hasOpportunities, setHasOpportunities] = useState(false)
 
   // Handle opportunities change callback
@@ -34,26 +34,26 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
     setHasOpportunities(hasOpps)
   }
 
-  const tabs = ['Arbitrage-Bot', 'Arbitrage-Manual', 'CalibreX Stats']
+  const tabs = ['Arbitrage-Manual', 'Arbitrage-Automatic', 'CalibreX Stats']
 
   // Render tab content based on active tab
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'Arbitrage-Bot':
+      case 'Arbitrage-Manual':
         return (
           <ScanAdvancedOpportunities 
             onOpportunitiesChange={handleOpportunitiesChange} 
           />
         )
 
-      case 'Arbitrage-Manual':
+      case 'Arbitrage-Automatic':
         return (
           <div className="p-6">
             <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
               <div className="text-center py-12">
                 <div className="text-white/40 mb-2">⚖️</div>
-                <div className="text-white/60 text-sm mb-1">Manual Arbitrage</div>
-                <div className="text-white/40 text-xs mb-4">Execute arbitrage trades manually with custom parameters</div>
+                <div className="text-white/60 text-sm mb-1">Automatic Arbitrage</div>
+                <div className="text-white/40 text-xs mb-4">Execute arbitrage trades automatically with custom parameters</div>
                 <button 
                   disabled
                   className="px-4 py-2 text-sm font-medium rounded-lg bg-white/10 text-white/50 cursor-not-allowed"
@@ -161,9 +161,9 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
             >
               <div className="flex items-center gap-2">
                 {tab}
-                
-                {/* Blinking green dot for Arbitrage-Bot when opportunities exist */}
-                {tab === 'Arbitrage-Bot' && hasOpportunities && (
+
+                {/* Blinking green dot for Arbitrage-Manual when opportunities exist */}
+                {tab === 'Arbitrage-Manual' && hasOpportunities && (
                   <div className="relative">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                     <div className="absolute inset-0 w-2 h-2 bg-green-400 rounded-full animate-ping opacity-75"></div>

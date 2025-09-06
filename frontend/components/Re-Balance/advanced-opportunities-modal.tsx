@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { X, TrendingUp, TrendingDown, Clock, DollarSign, Percent, Target, AlertCircle } from 'lucide-react'
+import { X, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react'
 import { useWallet } from '../../hooks/useWallet'
 
 interface VenueRecommendation {
@@ -105,10 +105,86 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
     return 'text-red-400'
   }
 
-  const getConfidenceText = (score: number) => {
-    if (score >= 8000) return 'High'
-    if (score >= 6000) return 'Medium'
-    return 'Low'
+  const getConfidenceStrokeColor = (score: number) => {
+    if (score >= 8000) return '#4ade80' // green-400
+    if (score >= 6000) return '#facc15' // yellow-400
+    return '#f87171' // red-400
+  }
+
+  const getConfidencePercentage = (score: number) => {
+    return Math.min(score / 100, 100) // Cap at 100%
+  }
+
+  const calculateTradePreview = () => {
+    if (!tradeAmount || parseFloat(tradeAmount) <= 0) return null
+    
+    const amount = parseFloat(tradeAmount)
+    const estimatedProfitRaw = parseFloat(opportunity.base_opportunity.estimated_profit) / 1e7
+    const direction = opportunity.base_opportunity.trade_direction
+    const baseAsset = opportunity.base_opportunity.pair.base_asset_symbol
+    const quoteAsset = opportunity.base_opportunity.pair.quote_asset_symbol
+    const price = parseFloat(opportunity.base_opportunity.stablecoin_price) / 1e7
+    
+    return {
+      sellAsset: direction === 'SELL' ? baseAsset : quoteAsset,
+      buyAsset: direction === 'SELL' ? quoteAsset : baseAsset,
+      sellAmount: amount,
+      buyAmount: direction === 'SELL' ? amount * price : amount / price,
+      estimatedProfit: (estimatedProfitRaw * amount) / 100, // Proportional to trade size
+      price: price,
+      direction
+    }
+  }
+
+  // Circular progress component
+  const CircularProgress: React.FC<{ value: number; size: number; strokeWidth: number }> = ({ value, size, strokeWidth }) => {
+    const radius = (size - strokeWidth) / 2
+    const circumference = radius * 2 * Math.PI
+    const strokeDasharray = circumference
+    const strokeDashoffset = circumference - (value / 100) * circumference
+    const center = size / 2
+
+    return (
+      <div className="relative inline-flex items-center justify-center">
+        <svg
+          width={size}
+          height={size}
+          className="transform -rotate-90"
+        >
+          {/* Background circle */}
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            fill="none"
+            className="text-white/10"
+          />
+          {/* Progress circle */}
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={getConfidenceStrokeColor(opportunity.confidence_score)}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={strokeDasharray}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            className="transition-all duration-500 ease-out"
+            style={{
+              filter: `drop-shadow(0 0 6px ${getConfidenceStrokeColor(opportunity.confidence_score)}40)`
+            }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-semibold text-white/90">
+            {Math.round(getConfidencePercentage(opportunity.confidence_score))}
+          </span>
+        </div>
+      </div>
+    )
   }
 
   const handleExecute = async () => {
@@ -159,7 +235,7 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
       })
 
       // Step 1: Prepare the transaction for the contract's execute_user_arbitrage function
-      console.log('� Step 1: Preparing contract transaction...')
+      console.log('📝 Step 1: Preparing contract transaction...')
       const prepareResponse = await fetch('/api/contract', {
         method: 'POST',
         headers: {
@@ -279,238 +355,203 @@ Please check your wallet connection and try again. If the problem persists, the 
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-black/90 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+      <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-              {(opportunity.base_opportunity.pair.base_asset_symbol || 'N/A').slice(0, 2)}
-            </div>
-            <div>
-              <h2 className="text-white text-lg font-semibold">
-                Arbitrage Opportunity
-              </h2>
-              <p className="text-white/60 text-sm">
-                {opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'}/{opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}
-              </p>
-            </div>
+        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/20 flex-shrink-0">
+          <div>
+            <h2 className="text-white/90 text-lg font-medium mb-1">
+              Arbitrage Opportunity
+            </h2>
+            <p className="text-white/50 text-sm">
+              {opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'}/{opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="text-white/60 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
+            className="text-white/50 hover:text-white/80 transition-all duration-200 p-2 hover:bg-white/5 rounded-xl"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto">
-          {/* Key Metrics */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Trade Direction */}
-            <div className="bg-black/20 border border-white/10 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                {opportunity.base_opportunity.trade_direction === 'BUY' 
-                  ? <TrendingUp size={16} className="text-green-400" />
-                  : <TrendingDown size={16} className="text-red-400" />
-                }
-                <span className="text-white/60 text-sm">Trade Direction</span>
-              </div>
-              <div className={`text-lg font-semibold ${
-                opportunity.base_opportunity.trade_direction === 'BUY' 
-                  ? 'text-green-400' 
-                  : 'text-red-400'
-              }`}>
-                {opportunity.base_opportunity.trade_direction}
-              </div>
-            </div>
-
-            {/* Confidence Score */}
-            <div className="bg-black/20 border border-white/10 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Target size={16} className="text-blue-400" />
-                <span className="text-white/60 text-sm">Confidence</span>
-              </div>
-              <div className={`text-lg font-semibold ${getConfidenceColor(opportunity.confidence_score)}`}>
-                {getConfidenceText(opportunity.confidence_score)} ({(opportunity.confidence_score / 100).toFixed(0)}%)
-              </div>
-            </div>
-          </div>
-
-          {/* Financial Metrics */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Estimated Profit */}
-            <div className="bg-black/20 border border-white/10 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign size={16} className="text-green-400" />
-                <span className="text-white/60 text-sm">Estimated Profit</span>
-              </div>
-              <div className="text-green-400 text-lg font-semibold">
-                ${formatLargeNumber(opportunity.base_opportunity.estimated_profit)}
-              </div>
-            </div>
-
-            {/* Deviation */}
-            <div className="bg-black/20 border border-white/10 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Percent size={16} className="text-orange-400" />
-                <span className="text-white/60 text-sm">Deviation</span>
-              </div>
-              <div className="text-orange-400 text-lg font-semibold">
-                {formatDeviationBps(opportunity.base_opportunity.deviation_bps)}
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Details */}
-          <div className="space-y-4">
-            <h3 className="text-white font-medium">Additional Details</h3>
-            
-            <div className="grid grid-cols-1 gap-3">
-              {/* Max Trade Size */}
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-white/60">Max Trade Size</span>
-                <span className="text-white font-medium">${formatLargeNumber(opportunity.max_trade_size)}</span>
-              </div>
-
-              {/* Timestamp */}
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-white/60">Timestamp</span>
-                <span className="text-white font-medium">{formatTimestamp(opportunity.base_opportunity.timestamp)}</span>
-              </div>
-
-              {/* Base Asset */}
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-white/60">Base Asset</span>
-                <span className="text-white font-medium">{opportunity.base_opportunity.pair.base_asset_symbol || 'N/A'}</span>
-              </div>
-
-              {/* Quote Asset */}
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-white/60">Quote Asset</span>
-                <span className="text-white font-medium">{opportunity.base_opportunity.pair.quote_asset_symbol || 'N/A'}</span>
-              </div>
-
-              {/* TWAP Price */}
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-white/60">TWAP Price</span>
-                <span className="text-white font-medium">
-                  {opportunity.twap_price ? `$${formatPrice(opportunity.twap_price)}` : 'N/A'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Trade Input */}
-          <div className="space-y-4">
-            <h3 className="text-white font-medium">Execute Trade</h3>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="block text-white/60 text-sm mb-2">
-                  Trade Amount ({opportunity.base_opportunity.trade_direction === 'SELL' 
-                    ? opportunity.base_opportunity.pair.base_asset_symbol 
-                    : opportunity.base_opportunity.pair.quote_asset_symbol})
-                  <span className="text-white/40 text-xs ml-2">
-                    ({opportunity.base_opportunity.trade_direction === 'SELL' 
-                      ? `Selling ${opportunity.base_opportunity.pair.base_asset_symbol}` 
-                      : `Buying ${opportunity.base_opportunity.pair.base_asset_symbol} with ${opportunity.base_opportunity.pair.quote_asset_symbol}`})
-                  </span>
-                </label>
-                <input
-                  type="number"
-                  value={tradeAmount}
-                  onChange={(e) => setTradeAmount(e.target.value)}
-                  placeholder={`Enter amount in ${opportunity.base_opportunity.trade_direction === 'SELL' 
-                    ? opportunity.base_opportunity.pair.base_asset_symbol 
-                    : opportunity.base_opportunity.pair.quote_asset_symbol}`}
-                  className="w-full bg-black/20 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:border-blue-400 focus:outline-none transition-colors"
-                />
-                <div className="text-xs text-white/40 mt-1">
-                  {opportunity.base_opportunity.trade_direction === 'SELL' 
-                    ? `You will sell ${tradeAmount || '0'} ${opportunity.base_opportunity.pair.base_asset_symbol} to get ${opportunity.base_opportunity.pair.quote_asset_symbol}` 
-                    : `You will spend ${tradeAmount || '0'} ${opportunity.base_opportunity.pair.quote_asset_symbol} to buy ${opportunity.base_opportunity.pair.base_asset_symbol}`}
-                </div>
-              </div>
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+          {/* Key Metrics Container - Enhanced 2x2 Grid */}
+          <div className="bg-black backdrop-blur-sm rounded-2xl p-6 border border-white/5 shadow-lg">
+            <div className="grid grid-cols-2 gap-6">
               
-              {tradeAmount && !executionResult && (
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-blue-400 text-sm">
-                    <AlertCircle size={16} />
-                    <span>Trade preview will be calculated here</span>
+              {/* Trade Direction - Enhanced */}
+              <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-black/10 backdrop-blur-sm">
+                <div className="text-white/40 text-xs font-medium mb-3 uppercase tracking-wider">Direction</div>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${
+                    opportunity.base_opportunity.trade_direction === 'BUY' 
+                      ? 'bg-green-400/20 text-green-400' 
+                      : 'bg-red-400/20 text-red-400'
+                  }`}>
+                    {opportunity.base_opportunity.trade_direction === 'BUY' 
+                      ? <TrendingUp size={20} />
+                      : <TrendingDown size={20} />
+                    }
+                  </div>
+                  <div className={`text-lg font-semibold ${
+                    opportunity.base_opportunity.trade_direction === 'BUY' 
+                      ? 'text-green-400' 
+                      : 'text-red-400'
+                  }`}>
+                    {opportunity.base_opportunity.trade_direction}
                   </div>
                 </div>
-              )}
+              </div>
 
-              {/* Execution Result */}
-              {executionResult && (
-                <div className={`border rounded-lg p-4 ${
-                  executionResult.success 
-                    ? 'bg-green-500/10 border-green-500/30' 
-                    : 'bg-red-500/10 border-red-500/30'
-                }`}>
-                  <div className={`flex items-center gap-2 text-sm mb-2 ${
-                    executionResult.success ? 'text-green-400' : 'text-red-400'
-                  }`}>
-                    <AlertCircle size={16} />
-                    <span className="font-medium">
-                      {executionResult.success ? 'Transaction Successful' : 'Execution Failed'}
-                    </span>
-                  </div>
-                  <div className={`text-sm whitespace-pre-line ${
-                    executionResult.success ? 'text-green-300' : 'text-red-300'
-                  }`}>
-                    {executionResult.message}
-                  </div>
-                  {executionResult.success && (
-                    <div className="mt-3 pt-3 border-t border-green-500/20">
-                      <div className="text-xs text-green-400 mb-1">Next Steps:</div>
-                      <div className="text-xs text-green-300">
-                        • Your arbitrage trade has been submitted to the Stellar network
-                        • You can view the transaction details using the hash above
-                        • Check your wallet balance to see the updated funds
+              {/* Confidence Score - Enhanced Circular Progress */}
+              <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-gradient-to-br from-black/30 to-black/10 backdrop-blur-sm">
+                <div className="text-white/40 text-xs font-medium mb-4 uppercase tracking-wider">Confidence</div>
+                <CircularProgress 
+                  value={getConfidencePercentage(opportunity.confidence_score)} 
+                  size={64} 
+                  strokeWidth={6} 
+                />
+              </div>
+
+              {/* Price - Enhanced */}
+              <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-gradient-to-br from-black/30 to-black/10 backdrop-blur-sm">
+                <div className="text-white/40 text-xs font-medium mb-3 uppercase tracking-wider">Profit</div>
+                <div className="text-white/90 text-xl font-semibold">
+                  ${formatPrice(opportunity.base_opportunity.estimated_profit)}
+                </div>
+              </div>
+
+              {/* Deviation - Enhanced */}
+              <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-gradient-to-br from-black/30 to-black/10 backdrop-blur-sm">
+                <div className="text-white/40 text-xs font-medium mb-3 uppercase tracking-wider">Deviation</div>
+                <div className="text-white/90 text-xl font-semibold">
+                  {formatDeviationBps(opportunity.base_opportunity.deviation_bps)}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Trade Summary & Input */}
+          <div className="space-y-4">            
+            {/* Trade Amount Input */}
+            <div className="bg-black/20 backdrop-blur-sm rounded-xl p-5 border border-white/5">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-white/60 text-sm font-medium mb-2">
+                    Trade Amount ({opportunity.base_opportunity.trade_direction === 'SELL' 
+                      ? opportunity.base_opportunity.pair.base_asset_symbol 
+                      : opportunity.base_opportunity.pair.quote_asset_symbol})
+                  </label>
+                    <input
+                      type="number"
+                      value={tradeAmount}
+                      onChange={(e) => setTradeAmount(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      placeholder={`Enter amount in ${opportunity.base_opportunity.trade_direction === 'SELL' 
+                        ? opportunity.base_opportunity.pair.base_asset_symbol 
+                        : opportunity.base_opportunity.pair.quote_asset_symbol}`}
+                      className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-3 text-white/90 placeholder-white/40 focus:border-white/30 focus:outline-none transition-all text-base"
+                    />
+                </div>
+
+                {/* Trade Preview */}
+                {tradeAmount && parseFloat(tradeAmount) > 0 && (() => {
+                  const preview = calculateTradePreview()
+                  if (!preview) return null
+                  
+                  return (
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-white/70 text-sm font-medium">
+                        <AlertCircle size={16} />
+                        <span>Trade Preview</span>
+                      </div>
+                      
+                      {/* Trade Summary Paragraph */}
+                      <div className="bg-black/20 rounded-lg p-4 border border-white/5">
+                        <p className="text-white/80 text-sm leading-relaxed">
+                          This arbitrage opportunity involves {preview.direction === 'SELL' ? 'selling' : 'buying'} {' '}
+                          <span className="text-blue-400 font-medium">{preview.sellAsset}</span> and {' '}
+                          {preview.direction === 'SELL' ? 'buying' : 'selling'} {' '}
+                          <span className="text-blue-400 font-medium">{preview.buyAsset}</span>. {' '}
+                          You will exchange <span className="text-white/90 font-medium">{preview.sellAmount.toFixed(4)} {preview.sellAsset}</span> {' '}
+                          to receive approximately <span className="text-white/90 font-medium">{preview.buyAmount.toFixed(4)} {preview.buyAsset}</span>.
+                        </p>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <div className="text-center p-3 bg-black/20 rounded-lg border border-white/5">
+                          <div className="text-white/50 mb-1 text-xs">You Sell</div>
+                          <div className="text-red-400 font-medium text-sm">
+                            {preview.sellAmount.toFixed(4)} {preview.sellAsset}
+                          </div>
+                        </div>
+                        
+                        <div className="text-center p-3 bg-black/20 rounded-lg border border-white/5">
+                          <div className="text-white/50 mb-1 text-xs">You Buy</div>
+                          <div className="text-green-400 font-medium text-sm">
+                            {preview.buyAmount.toFixed(4)} {preview.buyAsset}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-white/50 text-xs bg-black/20 rounded-lg p-3 border border-white/5">
+                        <div className="font-medium text-white/70 mb-2">Trade Details:</div>
+                        <div>• Exchange rate: 1 {preview.sellAsset} = {(preview.buyAmount / preview.sellAmount).toFixed(6)} {preview.buyAsset}</div>
+                        <div>• Market price: ${preview.price.toFixed(4)} per {opportunity.base_opportunity.pair.base_asset_symbol}</div>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+                  )
+                })()}
+
+                {/* Execution Result */}
+                {executionResult && (
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <div className="flex items-center gap-3 text-sm mb-3 text-white/80">
+                      <AlertCircle size={16} />
+                      <span className="font-medium">
+                        {executionResult.success ? 'Transaction Successful' : 'Execution Failed'}
+                      </span>
+                    </div>
+                    <div className="text-xs whitespace-pre-line leading-relaxed text-white/70">
+                      {executionResult.message}
+                    </div>
+                    {executionResult.success && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="text-xs text-white/80 mb-2 font-medium">Next Steps:</div>
+                        <div className="text-xs text-white/60 space-y-1">
+                          <div>• Your arbitrage trade has been submitted to the Stellar network</div>
+                          <div>• You can view the transaction details using the hash above</div>
+                          <div>• Check your wallet balance to see the updated funds</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-white/10 bg-black/30">
-          <div className="flex items-center justify-between">
-            <div className="text-white/60 text-sm">
-              {!userAddress ? (
-                <span className="text-yellow-400">⚠️ Please connect your wallet first</span>
-              ) : (
-                'Review the details carefully before executing'
-              )}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 text-white/70 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
+        <div className="p-6 border-t border-white/5 bg-black/20 self-end">
               <button
                 onClick={handleExecute}
                 disabled={!tradeAmount || parseFloat(tradeAmount) <= 0 || !userAddress || isExecuting}
-                className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 hover:text-blue-300 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border border-blue-500/30 hover:border-blue-500/40 text-sm"
               >
                 {isExecuting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Executing Real Trade...
+                    <div className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"></div>
+                    Executing...
                   </>
                 ) : (
-                  '🚀 Execute Real Trade'
+                  <>
+                    Execute Trade
+                  </>
                 )}
               </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

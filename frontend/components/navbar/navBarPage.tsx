@@ -4,10 +4,12 @@ import { Menu, X } from 'lucide-react'
 import SearchBar from './search-bar'
 import StellarConnect from '../../app/stellar-connect'
 import ProfileModal from '../Profile/profile-modal'
+import FAQModal from '../faq'
 import Link from 'next/link'
 const NavBarPage = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isFAQOpen, setIsFAQOpen] = useState(false)
 
   const handleProfileClick = () => {
     setIsProfileModalOpen(true)
@@ -55,10 +57,13 @@ const NavBarPage = () => {
         <div className="hidden md:flex items-center gap-2 lg:gap-4 flex-shrink-0">
           {/* Three Navigation Buttons */}
           <div className="flex items-center gap-1 lg:gap-3">
-            {/* Explore Button */}
-            <button className="relative bg-transparent text-white font-medium text-xs lg:text-sm px-2 lg:px-3 py-2 transition-all duration-300 ease-out group whitespace-nowrap">
+            {/* FAQ Button */}
+            <button 
+              onClick={() => setIsFAQOpen(true)}
+              className="relative bg-transparent text-white font-medium text-xs lg:text-sm px-2 lg:px-3 py-2 transition-all duration-300 ease-out group whitespace-nowrap"
+            >
               <span className="relative">
-                Explore
+                FAQ
                 <div className="absolute -bottom-1 left-0 right-0 h-[1px] w-0 bg-white/60 transition-all duration-300 ease-out group-hover:w-full"></div>
               </span>
             </button>
@@ -116,10 +121,13 @@ const NavBarPage = () => {
             {/* Mobile Navigation Buttons */}
             <div className="flex flex-col space-y-6">
               <button 
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={() => {
+                  setIsFAQOpen(true)
+                  setIsMobileMenuOpen(false)
+                }}
                 className="text-left text-white/90 font-medium text-lg px-4 py-3 hover:bg-white/5 rounded-lg transition-all duration-300"
               >
-                Explore
+                FAQ
               </button>
               
               <button 
@@ -147,6 +155,12 @@ const NavBarPage = () => {
       <ProfileModal 
         isOpen={isProfileModalOpen} 
         onClose={handleCloseProfileModal} 
+      />
+
+      {/* FAQ Modal */}
+      <FAQModal 
+        isOpen={isFAQOpen} 
+        onClose={() => setIsFAQOpen(false)} 
       />
     </>
   )

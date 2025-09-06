@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Eye, Edit3, Save, RotateCcw, Info } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Edit3, Save, RotateCcw, Info } from 'lucide-react'
 import { useWallet } from '../../hooks/useWallet'
 
 interface ArbitrageConfig {
@@ -11,12 +11,12 @@ interface ArbitrageConfig {
   slippage_tolerance_bps: number
 }
 
-const SettingsTab = () => {
+interface SettingsTabProps {
+  showMessage: (message: string) => void
+}
+
+const SettingsTab: React.FC<SettingsTabProps> = ({ showMessage }) => {
   const { address, walletKit } = useWallet()
-  const [settings, setSettings] = useState({
-    autoRefresh: true,
-    privacyMode: false
-  })
   
   const [userConfig, setUserConfig] = useState<ArbitrageConfig | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -68,13 +68,6 @@ const SettingsTab = () => {
     setIsLoading(false)
   }
 }
-
-  const toggleSetting = (key: keyof typeof settings) => {
-    setSettings(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }))
-  }
 
   const startEditing = () => {
     setIsEditing(true)
@@ -164,6 +157,9 @@ const handleNumericStringChange = (field: keyof ArbitrageConfig, value: string) 
         setIsEditing(false)
         setHasChanges(false)
         
+        // Show success message
+        showMessage('✅ Trading configuration updated successfully!')
+        
         console.log('Configuration updated successfully!')
         
       } else {
@@ -171,7 +167,7 @@ const handleNumericStringChange = (field: keyof ArbitrageConfig, value: string) 
       }
     } catch (error) {
       console.error('Error updating config:', error)
-      // You might want to show an error message to the user here
+      showMessage('❌ Failed to update configuration. Please try again.')
     } finally {
       setIsUpdating(false)
     }
@@ -199,23 +195,6 @@ const handleNumericStringChange = (field: keyof ArbitrageConfig, value: string) 
     max_gas_price: "Maximum fee willing to pay for transaction execution (in stroops). Higher values ensure faster execution during network congestion.",
     min_liquidity: "Minimum liquidity required in a market before considering it for trading (in stroops). Ensures trades can be executed efficiently."
   }
-
-  const ToggleSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: () => void }) => (
-    <div
-      onClick={onChange}
-      className={`w-12 h-6 rounded-full relative cursor-pointer transition-all duration-300 ${
-        enabled 
-          ? 'bg-blue-500/60 hover:bg-blue-500/70' 
-          : 'bg-white/10 hover:bg-white/15'
-      }`}
-    >
-      <div
-        className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all duration-300 shadow-lg ${
-          enabled ? 'right-0.5' : 'left-0.5'
-        } ${enabled ? '' : 'bg-white/70'}`}
-      />
-    </div>
-  )
 
   return (
     <div className="p-6 space-y-6 font-raleway">
@@ -306,10 +285,17 @@ const handleNumericStringChange = (field: keyof ArbitrageConfig, value: string) 
                   </div>
                 </div>
               </div>
-              <ToggleSwitch 
-                enabled={editForm.enabled} 
-                onChange={() => handleFormChange('enabled', !editForm.enabled)}
-              />
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={editForm.enabled}
+                  onChange={(e) => handleFormChange('enabled', e.target.checked)}
+                  className="w-4 h-4 bg-black/30 border border-white/20 rounded text-blue-500 focus:ring-blue-500/50 focus:ring-2"
+                />
+                <span className="ml-2 text-white/70 text-sm">
+                  {editForm.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
             </div>
 
             {/* Min Profit BPS */}
@@ -464,41 +450,6 @@ const handleNumericStringChange = (field: keyof ArbitrageConfig, value: string) 
           </button>
         </div>
       )}
-      
-      {/* UI Settings Section */}
-      <div className="bg-black/20 backdrop-blur-sm rounded-xl p-5 border border-white/5 space-y-4">
-        <h4 className="text-white/80 text-sm font-medium mb-4">Interface Settings</h4>
-        
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <RefreshCw className="w-4 h-4 text-white/50" />
-              <div>
-                <p className="text-white/70 text-sm">Auto Refresh</p>
-                <p className="text-white/40 text-xs">Automatically update data every 30 seconds</p>
-              </div>
-            </div>
-            <ToggleSwitch 
-              enabled={settings.autoRefresh} 
-              onChange={() => toggleSetting('autoRefresh')} 
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Eye className="w-4 h-4 text-white/50" />
-              <div>
-                <p className="text-white/70 text-sm">Privacy Mode</p>
-                <p className="text-white/40 text-xs">Hide sensitive information</p>
-              </div>
-            </div>
-            <ToggleSwitch 
-              enabled={settings.privacyMode} 
-              onChange={() => toggleSetting('privacyMode')} 
-            />
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

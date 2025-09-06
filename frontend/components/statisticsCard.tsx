@@ -311,11 +311,6 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
           <span className="text-white/90 text-lg font-semibold">
             {isConnected ? `$${portfolioValue}` : 'N/A'}
           </span>
-          {lastUpdated && (
-            <span className="text-white/30 text-xs">
-              {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
         </div>
 
         {/* Vertical Divider */}
@@ -326,7 +321,7 @@ const StatisticsCard: React.FC<StatisticsCardProps> = ({ className = '' }) => {
           <span className="text-white/50 text-xs font-medium mb-1">P/L (24h)</span>
           {isConnected ? (
             isLoadingProfit ? (
-              <div className="text-white/40 text-lg font-thin">
+              <div className="text-white/40 text-lg font-semibold">
                 Loading...
               </div>
             ) : (dailyProfit !== 0 || dailyProfitPercentage !== 0) ? (

@@ -29,7 +29,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
         // ✅ Pass isActive prop to trigger API call only when tab is active
         return <TransactionTab key={activeTab} isActive={activeTab === 'Trade History'} />
       case 'Settings':
-        return <SettingsTab key={activeTab} /> // Add key to force re-render when tab changes
+        return <SettingsTab key={activeTab} showMessage={showMessage} /> // Add key to force re-render when tab changes
       default:
         return <ProfileStats isActive={activeTab === 'Statistics'} />
     }
