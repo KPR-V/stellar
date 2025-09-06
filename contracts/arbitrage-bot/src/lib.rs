@@ -236,7 +236,7 @@ impl ArbitrageBot {
         trade_amount: i128,
         venue_address: Address,
     ) -> TradeExecution {
-        user.require_auth();
+        // user.require_auth();
     
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env

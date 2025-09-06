@@ -13,9 +13,7 @@ const safeStringify = (obj: any) => {
   });
 };
 
-// The contract address has been redeployed and changed - keep both addresses for reference
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS!; 
-// Previous address was: CC52JB6WK4NJLDK5SB6A2XBILYQ4A5RWJ2O6YZANL4D3TN3X3Y4H7BDP
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CBJVUUPKFUNZ2SKJ5I6BF4J6D4FJIOAJQ6TFQEAHX5TKV7YVW3ZM4AS3';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
