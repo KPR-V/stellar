@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../bindings/src'; 
-import { Networks } from '@stellar/stellar-sdk';
-import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, scValToNative, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address, Networks } from '@stellar/stellar-sdk';
+import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, scValToNative, nativeToScVal, xdr,Contract, // ✅ Import Contract class
+  Operation   } from '@stellar/stellar-sdk';
 
 // ✅ Helper to safely stringify objects with BigInt values
 const safeStringify = (obj: any) => {
@@ -13,7 +14,7 @@ const safeStringify = (obj: any) => {
   });
 };
 
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CBJVUUPKFUNZ2SKJ5I6BF4J6D4FJIOAJQ6TFQEAHX5TKV7YVW3ZM4AS3';
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CBNTCMYVDM7PSXU56QKYH6NG772ETOERFVHCA4SMF4JEO6VG7CXDH3AX';
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -80,7 +81,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (action === 'execute_user_arbitrage') {
       return await executeUserArbitrage(userAddress, params.tradeAmount, params.opportunity, params.venueAddress);
     }
-
+    if (action === 'approve_router_spending') {
+      return await approveRouterSpending(
+        userAddress, 
+        params.tokenAddress, 
+        params.amount,
+        params.routerAddress
+      );
+    }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
@@ -1613,7 +1621,72 @@ async function executeUserArbitrage(
   }
 }
 
+async function approveRouterSpending(
+  userAddress: string,
+  tokenAddress: string,
+  amount: string,
+  routerAddress: string
+): Promise<NextResponse> {
+  try {
+    console.log('Creating token approval with Stellar SDK Contract:', {
+      userAddress,
+      tokenAddress,
+      amount,
+      routerAddress
+    });
 
+    const server = new SorobanRpc.Server(RPC_URL);
+    const scaledAmount = BigInt(Math.floor(parseFloat(amount) * 1e7));
+    const expirationLedger = 1000000;
 
+    // ✅ Get source account
+    const sourceAccount = await server.getAccount(userAddress);
+
+    // ✅ Use Stellar SDK Contract class - this is the correct way
+    const tokenContract = new Contract(tokenAddress);
+    
+    // ✅ Create the approve operation using Contract.call()
+    const approveOperation = tokenContract.call(
+      'approve',
+      Address.fromString(userAddress).toScVal(),    // from
+      Address.fromString(routerAddress).toScVal(),  // spender
+      nativeToScVal(scaledAmount, { type: 'i128' }), // amount
+      nativeToScVal(expirationLedger, { type: 'u32' }) // expiration
+    );
+
+    // ✅ Build transaction with the correct operation
+    const transaction = new TransactionBuilder(sourceAccount, {
+      fee: '1000000',
+      networkPassphrase: Networks.TESTNET,
+    })
+    .addOperation(approveOperation) // ✅ This returns proper Operation instance
+    .setTimeout(300)
+    .build();
+
+    console.log('Preparing token approval transaction...');
+    const preparedTransaction = await server.prepareTransaction(transaction);
+
+    return NextResponse.json({
+      success: true,
+      data: { 
+        message: 'Token approval transaction prepared successfully',
+        transactionXdr: preparedTransaction.toXDR(),
+        approvalDetails: {
+          token: tokenAddress,
+          spender: routerAddress,
+          amount: scaledAmount.toString(),
+          expiration: expirationLedger
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error preparing token approval:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to prepare approval'
+    }, { status: 500 });
+  }
+}
 
 

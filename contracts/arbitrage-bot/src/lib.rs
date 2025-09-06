@@ -236,7 +236,7 @@ impl ArbitrageBot {
         trade_amount: i128,
         venue_address: Address,
     ) -> TradeExecution {
-        // user.require_auth();
+        user.require_auth();
     
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
@@ -1666,7 +1666,7 @@ env.events().publish(
         trade_amount: i128,
         venue_address: &Address,
     ) -> TradeExecution {
-        env.current_contract_address().require_auth();
+        // env.current_contract_address().require_auth();
         let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
             (
                 opportunity.base_opportunity.pair.quote_asset_address.clone(),
@@ -1688,12 +1688,12 @@ env.events().publish(
         let token_client = TokenClient::new(env, &token_in);
         let expiration_ledger = env.ledger().sequence() + 1000;
         
-        token_client.approve(
-            &env.current_contract_address(),
-           &router_address,
-            &trade_amount,
-            &expiration_ledger,
-        );
+        // token_client.approve(
+        //     &user,                         
+        // &env.current_contract_address(), 
+        // &trade_amount,
+        // &expiration_ledger,
+        // );
 
 
 
@@ -1706,7 +1706,8 @@ env.events().publish(
             &trade_amount,
             &min_amount_out,
             &path,
-            &env.current_contract_address(),
+            // &env.current_contract_address(),
+            &user,
             &deadline,
         );
     

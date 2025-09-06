@@ -163,15 +163,14 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
       alert('Please connect your wallet and enter a trade amount')
       return
     }
-
     if (!walletKit) {
       alert('Wallet not connected. Please connect your wallet first.')
       return
     }
-
+  
     setIsExecuting(true)
     setExecutionResult(null)
-
+  
     try {
       const opportunityWithHardcodedVenue = {
         base_opportunity: {
@@ -196,14 +195,14 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
           }
         ]
       }
-
+  
       console.log('🚀 Starting arbitrage execution:', {
         userAddress,
         tradeAmount,
         opportunity: opportunityWithHardcodedVenue,
         venueAddress: "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS"
       })
-
+  
       console.log('📝 Step 1: Preparing contract transaction...')
       const prepareResponse = await fetch('/api/contract', {
         method: 'POST',
@@ -218,36 +217,34 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
           venueAddress: "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS"
         }),
       })
-
+  
       const prepareResult = await prepareResponse.json()
-
       if (!prepareResult.success) {
         setExecutionResult({
           success: false,
-          message: prepareResult.error || 'Failed to prepare transaction'
+          message: `❌ Failed to prepare arbitrage: ${prepareResult.error}`
         })
         return
       }
-
+  
       const transactionXdr = prepareResult.data.transactionXdr
       const transactionFee = prepareResult.data.transactionFee
       const tradeDetails = prepareResult.data.tradeDetails
-
+  
       console.log('✅ Transaction prepared successfully:', {
         hasXdr: !!transactionXdr,
         estimatedFee: transactionFee?.xlm,
         tradeAmount: tradeDetails?.amount,
         direction: tradeDetails?.direction
       })
-
+  
       console.log('🔐 Step 2: Requesting wallet signature...')
-      
       const walletResponse = await walletKit.signTransaction(transactionXdr, {
         networkPassphrase: "Test SDF Network ; September 2015"
       })
-
-      console.log('✅ Transaction signed successfully, now submitting to network...')
-
+  
+      console.log('✅ Arbitrage transaction signed successfully')
+  
       console.log('📡 Step 3: Submitting transaction to Stellar network...')
       const submitResponse = await fetch('/api/contract/submit', {
         method: 'POST',
@@ -258,47 +255,47 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
           signedXdr: walletResponse.signedTxXdr
         }),
       })
-
-      const submitResult = await submitResponse.json()
-
-      if (submitResult.success) {
+  
+      const arbitrageSubmitResult = await submitResponse.json()
+  
+      if (arbitrageSubmitResult.success) {
+        console.log('🎉 ARBITRAGE EXECUTED SUCCESSFULLY!')
         setExecutionResult({
           success: true,
-          message: `✅ Arbitrage trade executed successfully! 
+          message: `✅ Arbitrage executed successfully! 
             
-🎯 Transaction Details:
-• Hash: ${submitResult.data.hash}
-• Status: ${submitResult.data.status}
-• Direction: ${tradeDetails?.direction}
-• Amount: ${parseFloat(tradeDetails?.amount || '0') / 1e7} ${tradeDetails?.baseAsset}
-• Estimated Profit: ${parseFloat(prepareResult.data.estimatedProfit || '0') / 1e7}
-• Fee Paid: ${transactionFee?.xlm || 'Unknown'} XLM
-
-🚀 The contract has executed your arbitrage trade on the Stellar network!`,
+  🎯 Transaction Details:
+  • Arbitrage Hash: ${arbitrageSubmitResult.data.hash}
+  • Status: ${arbitrageSubmitResult.data.status}
+  • Trade Amount: ${tradeAmount}
+  • Estimated Profit: ${parseFloat(prepareResult.data.estimatedProfit || '0') / 1e7}
+  • Fee Paid: ${transactionFee?.xlm || 'Unknown'} XLM
+  
+  🚀 The contract has executed your arbitrage trade on the Stellar network!`,
           transactionXdr: walletResponse.signedTxXdr
         })
-        
+  
         console.log('🎉 Arbitrage trade executed successfully!', {
-          hash: submitResult.data.hash,
-          status: submitResult.data.status,
-          contractStatus: submitResult.data.contractStatus,
+          hash: arbitrageSubmitResult.data.hash,
+          status: arbitrageSubmitResult.data.status,
+          contractStatus: arbitrageSubmitResult.data.contractStatus,
           tradeDetails: tradeDetails
         })
       } else {
         setExecutionResult({
           success: false,
-          message: `❌ Failed to submit transaction: ${submitResult.error || 'Unknown error'}
+          message: `❌ Failed to submit transaction: ${arbitrageSubmitResult.error || 'Unknown error'}
           
-The transaction was signed but could not be submitted to the network. Please try again.`
+  The transaction was signed but could not be submitted to the network. Please try again.`
         })
       }
     } catch (error) {
       console.error('❌ Error executing real arbitrage trade:', error)
-      
+  
       let errorMessage = 'Unknown error occurred'
       if (error instanceof Error) {
         errorMessage = error.message
-        
+  
         if (errorMessage.includes('User declined')) {
           errorMessage = 'Transaction was cancelled by user'
         } else if (errorMessage.includes('network')) {
@@ -307,17 +304,18 @@ The transaction was signed but could not be submitted to the network. Please try
           errorMessage = 'Insufficient funds to execute this trade'
         }
       }
-      
+  
       setExecutionResult({
         success: false,
         message: `❌ Error: ${errorMessage}
         
-Please check your wallet connection and try again. If the problem persists, the arbitrage opportunity may have expired.`
+  Please check your wallet connection and try again. If the problem persists, the arbitrage opportunity may have expired.`
       })
     } finally {
       setIsExecuting(false)
     }
   }
+  
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
