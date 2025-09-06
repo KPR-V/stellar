@@ -1,4 +1,3 @@
-// components/profile/transaction-tab.tsx
 import React, { useState, useEffect } from 'react'
 import { Receipt, Filter, TrendingUp, TrendingDown, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { useWallet } from '../../hooks/useWallet'
@@ -35,7 +34,6 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'success' | 'failed'>('all')
 
-  // ✅ Fetch trades only when tab becomes active
   useEffect(() => {
     if (isActive && address) {
       fetchTradeHistory()
@@ -44,7 +42,6 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
 
   const fetchTradeHistory = async () => {
     if (!address) return
-    
     setIsLoading(true)
     setError(null)
     
@@ -75,7 +72,7 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
   }
 
   const formatTimestamp = (timestamp: string) => {
-    const date = new Date(parseInt(timestamp) * 1000) // Convert from seconds to milliseconds
+    const date = new Date(parseInt(timestamp) * 1000)
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
   }
 
@@ -124,7 +121,6 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
         </h3>
         
         <div className="flex gap-2">
-          {/* Filter Dropdown */}
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as 'all' | 'success' | 'failed')}
@@ -146,14 +142,12 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
         </div>
       </div>
       
-      {/* Loading State */}
       {isLoading && (
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-8 border border-white/5 text-center">
           <div className="text-white/50 text-sm font-medium">Loading Trades...</div>
         </div>
       )}
 
-      {/* Error State */}
       {error && !isLoading && (
         <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-5 border border-red-500/30">
           <h4 className="text-red-400 text-sm font-medium mb-2">Error Loading Trades</h4>
@@ -167,7 +161,6 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
         </div>
       )}
 
-      {/* Empty State */}
       {!isLoading && !error && filteredTrades.length === 0 && (
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-8 border border-white/5 text-center">
           <Receipt className="w-12 h-12 text-white/30 mx-auto mb-4" />
@@ -181,7 +174,6 @@ const TransactionTab: React.FC<TransactionTabProps> = ({ isActive }) => {
         </div>
       )}
 
-      {/* Trade List */}
       {!isLoading && !error && filteredTrades.length > 0 && (
         <div className="space-y-3">
           {filteredTrades.map((trade, index) => (

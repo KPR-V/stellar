@@ -41,14 +41,10 @@ interface CryptoData {
 export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }: AdvancedCryptoDataProps) {
   if (!isOpen || !cryptoData) return null
 
-  // Check if this is token data from a specific network (has address-like ID)
   const isTokenData = cryptoData.current_price === 0 && cryptoData.market_cap === 0
-  
-  // For network tokens, we need to fetch additional data
   const [enhancedData, setEnhancedData] = useState<CryptoData | null>(null)
   const [loadingEnhanced, setLoadingEnhanced] = useState(false)
 
-  // Fetch enhanced data for network tokens
   useEffect(() => {
     if (isTokenData && isOpen && cryptoData) {
       fetchEnhancedTokenData()
@@ -58,20 +54,16 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
   const fetchEnhancedTokenData = async () => {
     setLoadingEnhanced(true)
     try {
-      // Try to find the token in the main markets API by symbol or name
       const response = await fetch(
         `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&sparkline=false`
       )
       
       if (response.ok) {
         const marketData = await response.json()
-        
-        // Find matching coin by symbol or name
         const matchedCoin = marketData.find((coin: any) => 
           coin.symbol.toLowerCase() === cryptoData.symbol.toLowerCase() ||
           coin.name.toLowerCase() === cryptoData.name.toLowerCase()
         )
-        
         if (matchedCoin) {
           setEnhancedData(matchedCoin)
         }
@@ -83,17 +75,7 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
     }
   }
 
-  // Use enhanced data if available, otherwise use original data
   const displayData = enhancedData || cryptoData
-
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 3,
-      maximumFractionDigits: 3
-    }).format(price)
-  }
 
   const formatLargeNumber = (number: number) => {
     if (number >= 1e12) {
@@ -128,30 +110,17 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
     }
   }
 
-  const priceChange = formatPercentage(displayData.price_change_percentage_24h)
   const marketCapChange = formatPercentage(displayData.market_cap_change_percentage_24h)
-
-  // Calculate volume change percentage (assuming it's available in a full API response)
-  // For now, we'll use the price change as a placeholder
   const volumeChange = formatPercentage(displayData.price_change_percentage_24h * 0.7) // Simulated
-
-  // For circulating supply change, we'll calculate based on total vs circulating
-  const supplyChangePercentage = displayData.total_supply 
-    ? ((displayData.circulating_supply / displayData.total_supply) - 1) * 100
-    : 0
+  const supplyChangePercentage = displayData.total_supply ? ((displayData.circulating_supply / displayData.total_supply) - 1) * 100 : 0
   const supplyChange = formatPercentage(supplyChangePercentage)
 
   return (
     <div className="absolute inset-0 bg-black/85 backdrop-blur-3xl z-[10000] font-raleway flex justify-center items-center">
       <div className="bg-black/90 backdrop-blur-lg border border-white/10 rounded-2xl shadow-2xl w-[800px] max-h-[80vh] overflow-hidden absolute top-1/2">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/15 bg-black/20">
           <div className="flex items-center space-x-4">
-            <img
-              src={displayData.image}
-              alt={displayData.name}
-              className="w-12 h-12 rounded-full"
-            />
+            <img src={displayData.image} alt={displayData.name} className="w-12 h-12 rounded-full" />
             <div>
               <h2 className="text-white/90 font-raleway font-medium text-2xl">
                 {displayData.name}
@@ -174,13 +143,8 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-6 bg-black/30 overflow-y-auto max-h-[calc(80vh-120px)] faq-scrollbar">
-          {/* Main Stats Cards */}
           <div className="grid grid-cols-3 gap-4 mb-6">
-            {/* Current Price Card */}
-
-            {/* Market Cap Card */}
             <div className="bg-black/20 border border-white/10 rounded-lg p-4 hover:bg-black/30 transition-all duration-300">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-white/70 text-sm font-medium">Market Cap</h3>
@@ -198,7 +162,6 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
               </div>
             </div>
 
-            {/* Total Volume Card */}
             <div className="bg-black/20 border border-white/10 rounded-lg p-4 hover:bg-black/30 transition-all duration-300">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-white/70 text-sm font-medium">24H Volume</h3>
@@ -216,7 +179,6 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
               </div>
             </div>
 
-            {/* Circulating Supply Card */}
             <div className="bg-black/20 border border-white/10 rounded-lg p-4 hover:bg-black/30 transition-all duration-300">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-white/70 text-sm font-medium">Circulating Supply</h3>
@@ -235,7 +197,6 @@ export default function AdvancedCryptoDataModal({ isOpen, onClose, cryptoData }:
             </div>
           </div>
 
-          {/* Crypto Chart Section - Always visible */}
           <div className="mt-6">
             {isTokenData && !enhancedData ? (
               <div className="bg-black/20 border border-white/10 rounded-xl p-6">

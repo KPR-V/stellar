@@ -23,7 +23,7 @@ const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose }) => {
 
   const toggleCategory = (category: string) => {
     setActiveCategory(activeCategory === category ? null : category)
-    setActiveQuestion(null) // Close any open questions when switching categories
+    setActiveQuestion(null)
   }
 
   const toggleQuestion = (question: string) => {
@@ -215,7 +215,6 @@ const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-none flex items-center justify-center z-[9999] font-raleway">
       <div className="bg-black/80 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl w-[800px] h-[600px] overflow-hidden relative">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/15 bg-black/20">
           <h2 className="text-white/90 font-raleway font-medium text-xl">
             Frequently Asked Questions
@@ -228,12 +227,10 @@ const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Content - Scrollable */}
         <div className="flex-1 bg-black/30 h-[500px] overflow-y-scroll faq-scrollbar">
           <div className="p-6 space-y-4">
             {Object.entries(faqData).map(([category, data]) => (
               <div key={category} className="bg-black/10 backdrop-blur-sm rounded-xl border border-white/15 overflow-hidden">
-                {/* Category Header */}
                 <button
                   onClick={() => toggleCategory(category)}
                   className="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition-all duration-300"
@@ -246,19 +243,17 @@ const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose }) => {
                   )}
                 </button>
 
-                {/* Category Content */}
                 <div className={`transition-all duration-300 ease-out overflow-hidden ${
                   activeCategory === category ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
                 }`}>
                   <div className="border-t border-white/5">
-                    {/* Quick Start Checklist (only for Getting Started) */}
                     {category === 'Getting Started' && data.checklist && (
                       <div className="p-4 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-b border-white/5">
                         <button
                           onClick={() => toggleQuestion('checklist')}
                           className="w-full flex items-center justify-between text-left hover:bg-white/5 rounded-lg p-3 transition-all duration-300"
                         >
-                          <span className="text-blue-300 font-medium">🎯 Quick Start Checklist</span>
+                          <span className="text-blue-300 font-medium">Quick Start Checklist</span>
                           {activeQuestion === 'checklist' ? (
                             <ChevronDown className="w-4 h-4 text-blue-300" />
                           ) : (
@@ -281,7 +276,6 @@ const FAQModal: React.FC<FAQModalProps> = ({ isOpen, onClose }) => {
                       </div>
                     )}
 
-                    {/* Questions */}
                     <div className="space-y-1 p-4">
                       {data.questions.map((item, index) => (
                         <div key={index} className="border border-white/5 rounded-lg overflow-hidden">

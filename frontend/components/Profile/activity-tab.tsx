@@ -11,29 +11,27 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
   const [activeForm, setActiveForm] = useState<'deposit' | 'withdraw' | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const { address, walletKit } = useWallet()
-  // Updated token options with correct Stellar testnet addresses
   const tokenOptions = [
     { 
       symbol: 'XLM', 
       name: 'Stellar Lumens', 
-      address: 'native', // XLM is native, no contract address
+      address: 'native',
       isNative: true
     },
     { 
       symbol: 'USDC', 
       name: 'USD Coin', 
-      address: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // Stellar testnet USDC
+      address: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
       isNative: false
     },
     { 
       symbol: 'EURC', 
       name: 'Euro Coin', 
-      address: 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO', // Stellar testnet EURC
+      address: 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO',
       isNative: false
     }
   ]
 
-  // Form states
   const [depositForm, setDepositForm] = useState({
     asset: 'XLM',
     tokenAddress: 'native',
@@ -93,8 +91,6 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
   setIsLoading(true)
   
   try {
-    // First, check if user is initialized
-    console.log('Checking user initialization status...')
     const initCheckResponse = await fetch('/api/contract', {
       method: 'POST',
       headers: {
@@ -116,24 +112,16 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
 
     const amountInStroops = Math.floor(parseFloat(depositForm.amount) * 10000000).toString()
 
-    console.log('Preparing deposit transaction...', {
-      amount: amountInStroops,
-      asset: depositForm.asset,
-      isNative: depositForm.isNative
-    })
-
     const requestBody = {
       action: 'deposit_user_funds',
       userAddress: address,
       amount: amountInStroops,
-      assetCode: depositForm.asset, // Include the asset symbol (XLM, USDC, etc.)
+      assetCode: depositForm.asset,
       ...(depositForm.isNative 
         ? { isNative: true }
         : { tokenAddress: depositForm.tokenAddress, isNative: false }
       )
     }
-
-    console.log('Sending deposit request:', requestBody)
 
     const response = await fetch('/api/contract', {
       method: 'POST',
@@ -147,32 +135,18 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
 
     if (result.success && result.data.transactionXdr) {
       try {
-        console.log('Signing transaction...')
-        
-        // Sign the transaction
-        const signed = await walletKit.signTransaction(result.data.transactionXdr, {
+          const signed = await walletKit.signTransaction(result.data.transactionXdr, {
           address,
           networkPassphrase: 'Test SDF Network ; September 2015'
         })
 
-        console.log('Transaction signed, submitting to network...', {
-          signedXdrLength: signed.signedTxXdr.length
-        })
-
-        // Validate signed XDR before submission
         try {
-          console.log('Validating signed XDR before submission...');
-          // Import TransactionBuilder for validation
           const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
           const validatedTx = TransactionBuilder.fromXDR(signed.signedTxXdr, Networks.TESTNET);
-          console.log('Signed XDR validation successful');
-          console.log('Signed XDR first 200 chars:', signed.signedTxXdr.substring(0, 200));
         } catch (validationError) {
-          console.error('CRITICAL: Signed XDR is corrupted!', validationError);
           throw new Error(`Wallet returned corrupted XDR: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
         }
 
-        // Submit the signed transaction using our enhanced submit endpoint
         const submitResponse = await fetch('/api/contract/submit', {
           method: 'POST',
           headers: {
@@ -185,23 +159,11 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
 
         if (submitResult.success) {
           console.log('Transaction confirmed:', submitResult.data)
-          
-          // Handle different success statuses
-          if (submitResult.data.status === 'SUCCESS_BUT_RESULT_UNPARSEABLE') {
-            showMessage(`Your Deposit was successfully executed! 
-            
-Hash: ${submitResult.data.hash}
-
-Note: Due to a Horizon server issue, we couldn't retrieve the full transaction details, but the transaction likely succeeded. You can check the status on Stellar Expert: https://stellar.expert/explorer/testnet/tx/${submitResult.data.hash}`)
-          } else {
-            showMessage(`Your Deposit was successfully executed! ${depositForm.amount} ${depositForm.asset} deposited successfully.`)
-          }
-          
+          showMessage(`Your Deposit was successfully executed! ${depositForm.amount} ${depositForm.asset} deposited successfully.`)
           setDepositForm({ ...depositForm, amount: '' })
         } else {
           console.error('Transaction failed:', submitResult)
           
-          // Provide more user-friendly error messages
           let errorMessage = submitResult.error || 'Transaction failed'
           if (errorMessage.includes('not initialized')) {
             errorMessage = 'Account not initialized. Please initialize your account first.'
@@ -212,8 +174,6 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
           }
           
           alert(`Transaction failed: ${errorMessage}`)
-          
-          // Log detailed error information for debugging
           if (submitResult.details) {
             console.error('Detailed error information:', submitResult.details)
           }
@@ -226,9 +186,8 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
     } else {
       console.error('Deposit preparation failed:', result.error)
       
-      // Handle SAC deployment requirement
       if (result.error && result.error.includes('Stellar Asset Contract needs to be deployed')) {
-        showMessage('⚠️ Native XLM Stellar Asset Contract needs to be deployed first. This is a one-time setup required for XLM transactions.');
+        showMessage('Native XLM Stellar Asset Contract needs to be deployed first. This is a one-time setup required for XLM transactions.');
         
         const shouldDeploy = confirm(
           `The native XLM Stellar Asset Contract (SAC) needs to be deployed first. This is a one-time setup.\n\n` +
@@ -250,17 +209,14 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
 
             if (deployResult.success) {
               if (deployResult.data.alreadyExists) {
-                showMessage('✅ Native XLM SAC is already deployed! Please try your deposit again.')
+                showMessage('Native XLM SAC is already deployed! Please try your deposit again.')
               } else {
-                console.log('Signing SAC deployment transaction...')
-                showMessage('🚀 Preparing SAC deployment transaction for signing...')
-                
+                showMessage('Preparing SAC deployment transaction for signing...')
                 const deployedSigned = await walletKit.signTransaction(deployResult.data.transactionXdr, {
                   address,
                   networkPassphrase: 'Test SDF Network ; September 2015'
                 })
 
-                // Submit the SAC deployment
                 const deploySubmitResponse = await fetch('/api/contract/submit', {
                   method: 'POST',
                   headers: {
@@ -272,27 +228,25 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
                 const deploySubmitResult = await deploySubmitResponse.json()
 
                 if (deploySubmitResult.success) {
-                  showMessage('🎉 Native XLM SAC deployed successfully! Please try your deposit again.')
+                  showMessage('Native XLM SAC deployed successfully! Please try your deposit again.')
                 } else {
-                  showMessage(`❌ SAC deployment failed: ${deploySubmitResult.error}`)
+                  showMessage(`SAC deployment failed: ${deploySubmitResult.error}`)
                 }
               }
             } else {
-              showMessage(`❌ SAC deployment preparation failed: ${deployResult.error}`)
+              showMessage(`SAC deployment preparation failed: ${deployResult.error}`)
             }
           } catch (deployError) {
             console.error('Error during SAC deployment:', deployError)
-            showMessage(`❌ SAC deployment failed: ${deployError instanceof Error ? deployError.message : 'Please try again.'}`)
+            showMessage(`SAC deployment failed: ${deployError instanceof Error ? deployError.message : 'Please try again.'}`)
           }
         }
       } else {
-        // Provide more user-friendly error messages
         let errorMessage = result.error || 'Failed to prepare transaction'
         if (errorMessage.includes('not initialized')) {
           errorMessage = 'Your account needs to be initialized first. Please initialize your account before depositing funds.'
         }
-        
-        showMessage(`❌ Deposit failed: ${errorMessage}`)
+        showMessage(`Deposit failed: ${errorMessage}`)
       }
     }
   } catch (error) {
@@ -323,22 +277,13 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
     setIsLoading(true)
     
     try {
-      // Convert amount to stroops (multiply by 10^7 for Stellar)
       const amountInStroops = Math.floor(parseFloat(withdrawForm.amount) * 10000000).toString()
-
-      console.log('Preparing withdrawal transaction...', {
-        amount: amountInStroops,
-        asset: withdrawForm.asset,
-        isNative: withdrawForm.isNative,
-        destination: withdrawForm.destinationAddress
-      })
-
       const requestBody = {
         action: 'withdraw_user_funds',
         userAddress: address,
         amount: amountInStroops,
         destinationAddress: withdrawForm.destinationAddress,
-        assetCode: withdrawForm.asset, // Include the asset symbol
+        assetCode: withdrawForm.asset,
         ...(withdrawForm.isNative 
           ? { isNative: true }
           : { tokenAddress: withdrawForm.tokenAddress, isNative: false }
@@ -357,32 +302,19 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
 
       if (result.success && result.data.transactionXdr) {
         try {
-          console.log('Signing withdrawal transaction...')
-          
-          // Sign the transaction
           const signed = await walletKit.signTransaction(result.data.transactionXdr, {
             address,
             networkPassphrase: 'Test SDF Network ; September 2015'
           })
 
-          console.log('Transaction signed, submitting to network...', {
-            signedXdrLength: signed.signedTxXdr.length
-          })
-
-          // Validate signed XDR before submission
           try {
-            console.log('Validating signed withdrawal XDR before submission...');
-            // Import TransactionBuilder for validation
             const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
             const validatedTx = TransactionBuilder.fromXDR(signed.signedTxXdr, Networks.TESTNET);
-            console.log('Signed withdrawal XDR validation successful');
-            console.log('Signed withdrawal XDR first 200 chars:', signed.signedTxXdr.substring(0, 200));
           } catch (validationError) {
             console.error('CRITICAL: Signed withdrawal XDR is corrupted!', validationError);
             throw new Error(`Wallet returned corrupted withdrawal XDR: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
           }
 
-          // Submit the signed transaction using our enhanced submit endpoint
           const submitResponse = await fetch('/api/contract/submit', {
             method: 'POST',
             headers: {
@@ -394,25 +326,12 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
           const submitResult = await submitResponse.json()
 
           if (submitResult.success) {
-            console.log('Withdrawal confirmed:', submitResult.data)
-            
-            // Handle different success statuses
-            if (submitResult.data.status === 'SUCCESS_BUT_RESULT_UNPARSEABLE') {
-              showMessage(`Your Withdrawal was successfully executed! 
-              
-Hash: ${submitResult.data.hash}
-
-Note: Due to a Horizon server issue, we couldn't retrieve the full transaction details, but the transaction likely succeeded. You can check the status on Stellar Expert: https://stellar.expert/explorer/testnet/tx/${submitResult.data.hash}`)
-            } else {
               showMessage(`Your Withdrawal was successfully executed! ${withdrawForm.amount} ${withdrawForm.asset} withdrawn successfully.`)
-            }
-            
-            setWithdrawForm({ ...withdrawForm, amount: '', destinationAddress: '' })
+              setWithdrawForm({ ...withdrawForm, amount: '', destinationAddress: '' })
           } else {
             console.error('Withdrawal failed:', submitResult)
             alert(`Withdrawal failed: ${submitResult.error}`)
             
-            // Log detailed error information for debugging
             if (submitResult.details) {
               console.error('Detailed error information:', submitResult.details)
             }
@@ -435,9 +354,7 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
 
   return (
     <div className="p-6 space-y-6 font-raleway">
-      {/* Accordion-style Deposit and Withdraw */}
       <div className="space-y-3">
-        {/* Deposit Accordion */}
         <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-white/5 overflow-hidden">
           <button
             onClick={() => toggleForm('deposit')}
@@ -454,9 +371,7 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
             )}
           </button>
           
-          <div className={`transition-all duration-300 ease-out overflow-hidden ${
-            activeForm === 'deposit' ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'
-          }`}>
+          <div className={`transition-all duration-300 ease-out overflow-hidden ${activeForm === 'deposit' ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'}`}>
             <div className="p-4 border-t border-white/5 space-y-4">
               <div className="space-y-4">
                 <div>
@@ -502,7 +417,7 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
           </div>
         </div>
 
-        {/* Withdraw Accordion */}
+        {/* Withdraw */}
         <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-white/5 overflow-hidden">
           <button
             onClick={() => toggleForm('withdraw')}
@@ -519,9 +434,7 @@ Note: Due to a Horizon server issue, we couldn't retrieve the full transaction d
             )}
           </button>
           
-          <div className={`transition-all duration-300 ease-out overflow-hidden ${
-            activeForm === 'withdraw' ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
-          }`}>
+          <div className={`transition-all duration-300 ease-out overflow-hidden ${activeForm === 'withdraw' ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
             <div className="p-4 border-t border-white/5 space-y-4">
               <div className="space-y-4">
                 <div>

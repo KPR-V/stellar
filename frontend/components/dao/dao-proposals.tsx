@@ -2,14 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { useWallet } from '../../hooks/useWallet'
 import { WalletNetwork } from '@creit.tech/stellar-wallets-kit'
-import type { 
-  Proposal, 
-  ProposalType, 
-  ProposalStatus, 
-  StakeInfo, 
-  DAOConfig,
-  Vote 
-} from '../../daobindings/src'
+import type {Proposal, ProposalType, ProposalStatus, StakeInfo, DAOConfig, Vote} from '../../daobindings/src'
 
 interface Props {
   onRequireStake: () => void
@@ -40,7 +33,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     title: '',
     description: '',
     proposal_type: 'UpdateConfig' as string,
-    // ✅ FIXED: Arbitrage Bot Config fields (not DAO config)
     arbitrage_config_data: {
       enabled: 'true',
       min_profit_bps: '',
@@ -49,7 +41,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       max_gas_price: '',
       min_liquidity: '',
     },
-    // Trading pair fields
+
     trading_pair_data: {
       base_asset_symbol: '',
       quote_asset_symbol: '',
@@ -58,7 +50,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       target_peg: '',
       deviation_threshold_bps: '',
     },
-    // Venue fields
+
     venue_data: {
       name: '',
       address: '',
@@ -69,9 +61,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     symbol_data: '',
   })
 
-
-
-  // Helper functions for type handling
   const getProposalTypeTag = (proposalType: ProposalType): string => {
     return proposalType.tag
   }
@@ -114,8 +103,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       return '0.00'
     }
   }
-
-  // Convert BigInt ID to number for state management
   const toNumberId = (id: bigint | number): number => {
     return typeof id === 'bigint' ? Number(id) : id
   }
@@ -196,7 +183,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     fetchAdditionalData()
   }, [])
 
-  // Enhanced stake checking with full stake info
   useEffect(() => {
     const checkStake = async () => {
       if (!address) {
@@ -227,12 +213,10 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           setStakeAmount(amt)
           setHasStake(BigInt(amt) > 0n)
         }
-        
         if (stakeInfoData.success) {
           setStakeInfo(stakeInfoData.data.stakeInfo)
         }
         
-        // Validate against DAO requirements
         if (daoConfig?.min_stake_to_propose) {
           const minRequired = BigInt(daoConfig.min_stake_to_propose)
           const current = BigInt(stakeAmount || '0')
@@ -240,9 +224,9 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           if (current < minRequired) {
             const requiredFormatted = (Number(minRequired) / 10000000).toFixed(2)
             const currentFormatted = (Number(current) / 10000000).toFixed(2)
-            setStakeValidation(`❌ Need ${requiredFormatted} KALE to create proposals (you have ${currentFormatted})`)
+            setStakeValidation(`Need ${requiredFormatted} KALE to create proposals (you have ${currentFormatted})`)
           } else {
-            setStakeValidation(`✅ Sufficient stake for proposals (${(Number(current) / 10000000).toFixed(2)} KALE)`)
+            setStakeValidation(`Sufficient stake for proposals (${(Number(current) / 10000000).toFixed(2)} KALE)`)
           }
         }
       } catch (e) {
@@ -255,11 +239,9 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     
     checkStake()
     const interval = setInterval(checkStake, 30000)
-    
     return () => clearInterval(interval)
   }, [address, daoConfig, stakeAmount])
 
-  // Fetch user votes for displayed proposals
   useEffect(() => {
     const fetchUserVotes = async () => {
       if (!address) return
@@ -295,20 +277,16 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
       })
       setUserVotes(voteMap)
     }
-    
     fetchUserVotes()
   }, [address, proposals, allProposals, viewMode])
 
   const handleVote = async (proposalId: number, voteYes: boolean) => {
     if (!address || !hasStake) return onRequireStake()
     if (!walletKit) return
-    
     setVoting(proposalId)
     setError(null)
-    
     try {
       console.log(`Voting ${voteYes ? 'YES' : 'NO'} on proposal ${proposalId}`)
-      
       const res = await fetch('/api/dao', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -345,9 +323,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         setError(submitData.error || 'Failed to submit vote')
         return
       }
-      
       await fetchProposals()
-      
     } catch (e) {
       console.error('Vote error:', e)
       setError(e instanceof Error ? e.message : 'Network error while voting')
@@ -410,10 +386,8 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
 
   const handleExecute = async (proposalId: number) => {
     if (!address || !walletKit) return
-    
     setExecuting(proposalId)
     setError(null)
-    
     try {
       const res = await fetch('/api/dao', {
         method: 'POST',
@@ -450,9 +424,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         setError(submitData.error || 'Failed to submit execution')
         return
       }
-      
       await fetchProposals()
-      
     } catch (e) {
       console.error('Execute error:', e)
       setError(e instanceof Error ? e.message : 'Network error while executing')
@@ -463,10 +435,8 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
 
   const handleCancel = async (proposalId: number) => {
     if (!address || !walletKit) return
-    
     setCancelling(proposalId)
     setError(null)
-    
     try {
       const res = await fetch('/api/dao', {
         method: 'POST',
@@ -503,9 +473,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         setError(submitData.error || 'Failed to submit cancellation')
         return
       }
-      
       await fetchProposals()
-      
     } catch (e) {
       console.error('Cancel error:', e)
       setError(e instanceof Error ? e.message : 'Network error while cancelling')
@@ -516,11 +484,9 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
 
   const handleCreate = async () => {
     if (!address || !hasStake) return onRequireStake()
-    
     if (daoConfig?.min_stake_to_propose) {
       const minStakeRequired = BigInt(daoConfig.min_stake_to_propose)
       const currentStake = BigInt(stakeAmount || '0')
-      
       if (currentStake < minStakeRequired) {
         const requiredFormatted = (Number(minStakeRequired) / 10000000).toFixed(2)
         const currentFormatted = (Number(currentStake) / 10000000).toFixed(2)
@@ -535,12 +501,10 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     }
     if (!walletKit) return
     
-    // ✅ FIXED: Prepare proposal data for ARBITRAGE BOT governance
     let proposalData: any = {}
     
     switch (form.proposal_type) {
       case 'UpdateConfig':
-        // ✅ Create ArbitrageConfig structure
         proposalData = {
           config_data: {
             enabled: form.arbitrage_config_data.enabled === 'true',
@@ -608,7 +572,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           return
         }
         
-        // ✅ FIXED: Send raw string - backend will wrap it properly
         proposalData = {
           admin_address: form.admin_address
         }
@@ -720,7 +683,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
     }
   }
   
-
   const isVotingEnded = (votingEndsAt: bigint | number) => {
     const timestamp = typeof votingEndsAt === 'bigint' ? Number(votingEndsAt) : votingEndsAt
     return Date.now() / 1000 > timestamp
@@ -754,8 +716,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               onClick={() => setViewMode('active')}
               className={`px-3 py-1 text-xs ${
                 viewMode === 'active' 
-                  ? 'bg-white/10 text-white' 
-                  : 'text-white/60 hover:text-white/80'
+                  ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white/80'
               }`}
             >
               Active
@@ -764,8 +725,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               onClick={() => setViewMode('all')}
               className={`px-3 py-1 text-xs ${
                 viewMode === 'all' 
-                  ? 'bg-white/10 text-white' 
-                  : 'text-white/60 hover:text-white/80'
+                  ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white/80'
               }`}
             >
               All
@@ -780,7 +740,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         </div>
       </div>
 
-      {/* Stake validation display */}
       {stakeValidation && (
         <div className={`text-xs p-2 rounded-lg ${
           stakeValidation.includes('✅') 
@@ -791,27 +750,24 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
         </div>
       )}
 
-      {/* Enhanced DAO Info */}
       {daoConfig && (
         <div className="text-xs text-white/50 p-2 bg-white/5 rounded-lg space-y-1">
-          <div>🏛️ DAO Governance Rules:</div>
+          <div>DAO Governance Rules:</div>
           <div>Min Stake to Propose: {(Number(daoConfig.min_stake_to_propose || 0) / 10000000).toFixed(2)} KALE</div>
           <div>Voting Duration: {daoConfig.voting_duration_ledgers || 0} ledgers • Quorum: {daoConfig.quorum_percentage || 0}%</div>
           <div>Execution Delay: {daoConfig.execution_delay || 0}s • Admin: {admin ? `${admin.slice(0, 8)}...` : 'N/A'}</div>
-          <div className="text-blue-300/70 pt-1">🤖 Proposals here govern the Arbitrage Bot Contract</div>
+          <div className="text-blue-300/70 pt-1">Proposals here govern the Arbitrage Bot Contract</div>
         </div>
       )}
 
       <div className="space-y-4">
-        {/* Create Proposal Button */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
             disabled={!address || creating}
             className={`px-4 py-2 rounded-lg text-sm transition-colors border ${
               address && !creating
-                ? 'bg-white/10 hover:bg-white/15 border-white/15 text-white' 
-                : 'bg-white/5 border-white/10 text-white/60'
+                ? 'bg-white/10 hover:bg-white/15 border-white/15 text-white' : 'bg-white/5 border-white/10 text-white/60'
             }`}
           >
             {showCreateForm ? 'Hide Form' : 'Create New Proposal'}
@@ -821,15 +777,13 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
           )}
         </div>
 
-        {/* ✅ FIXED: Enhanced Proposal Creation Form for Arbitrage Bot */}
         {showCreateForm && (
           <div className="p-4 bg-black/30 border border-white/10 rounded-lg space-y-4">
             <h4 className="text-white/90 text-lg font-medium">Create Arbitrage Bot Proposal</h4>
             <div className="text-sm text-blue-300/80 mb-4">
-              🤖 These proposals will govern the Arbitrage Bot contract behavior
+              These proposals will govern the Arbitrage Bot contract behavior
             </div>
             
-            {/* Basic Fields */}
             <div className="space-y-3">
               <input
                 value={form.title}
@@ -861,10 +815,9 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               </select>
             </div>
 
-            {/* ✅ FIXED: Arbitrage Bot Configuration (not DAO config) */}
             {form.proposal_type === 'UpdateConfig' && (
               <div className="space-y-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                <h5 className="text-blue-300 text-sm font-medium">🤖 Arbitrage Bot Configuration</h5>
+                <h5 className="text-blue-300 text-sm font-medium">Arbitrage Bot Configuration</h5>
                 <div className="text-xs text-blue-200/80 mb-2">
                   Update the arbitrage bot's trading parameters and behavior settings.
                 </div>
@@ -967,17 +920,16 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 </div>
                 
                 <div className="text-xs text-white/60 space-y-1 pt-2 border-t border-blue-500/20">
-                  <div className="font-medium">🤖 Note:</div>
+                  <div className="font-medium">Note:</div>
                   <div>This configures the arbitrage bot's trading behavior, not the DAO itself.</div>
                   <div>Leave fields empty to keep current values. Values are in stroops (1 XLM = 10,000,000 stroops).</div>
                 </div>
               </div>
             )}
 
-            {/* ✅ FIXED: Trading Pair for Arbitrage Bot */}
             {form.proposal_type === 'AddTradingPair' && (
               <div className="space-y-3 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                <h5 className="text-green-300 text-sm font-medium">➕ Add Trading Pair</h5>
+                <h5 className="text-green-300 text-sm font-medium">Add Trading Pair</h5>
                 <div className="text-xs text-green-200/80 mb-2">
                   Add a new asset pair for the arbitrage bot to monitor and trade.
                 </div>
@@ -1077,7 +1029,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
 
             {form.proposal_type === 'AddTradingVenue' && (
               <div className="space-y-3 p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                <h5 className="text-purple-300 text-sm font-medium">🏢 Add Trading Venue</h5>
+                <h5 className="text-purple-300 text-sm font-medium">Add Trading Venue</h5>
                 <div className="text-xs text-purple-200/80 mb-2">
                   Add a new DEX or trading venue for the arbitrage bot to use.
                 </div>
@@ -1130,7 +1082,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
 
             {form.proposal_type === 'TransferAdmin' && (
               <div className="space-y-3 p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                <h5 className="text-orange-300 text-sm font-medium">⚠️ Admin Transfer Details</h5>
+                <h5 className="text-orange-300 text-sm font-medium">Admin Transfer Details</h5>
                 <div className="text-xs text-orange-200/80 mb-2">
                   Transfer admin control of the arbitrage bot to a new address. This is a critical operation!
                 </div>
@@ -1151,7 +1103,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
 
             {form.proposal_type === 'PausePair' && (
               <div className="space-y-3 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                <h5 className="text-yellow-300 text-sm font-medium">⏸️ Pause Trading Pair</h5>
+                <h5 className="text-yellow-300 text-sm font-medium">Pause Trading Pair</h5>
                 <div className="text-xs text-yellow-200/80 mb-2">
                   Temporarily disable arbitrage for a specific asset symbol.
                 </div>
@@ -1168,7 +1120,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
             {(form.proposal_type === 'UpdateRiskManager' || form.proposal_type === 'EmergencyStop') && (
               <div className="space-y-3 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                 <h5 className="text-red-300 text-sm font-medium">
-                  {form.proposal_type === 'EmergencyStop' ? '🚨 Emergency Stop' : '🛡️ Risk Manager Update'}
+                  {form.proposal_type === 'EmergencyStop' ? 'Emergency Stop' : 'Risk Manager Update'}
                 </h5>
                 <div className="text-xs text-red-200/80">
                   {form.proposal_type === 'EmergencyStop' 
@@ -1179,15 +1131,14 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
               </div>
             )}
 
-            {/* Submit Button */}
+            {/* Submit */}
             <div className="flex items-center gap-3">
               <button
                 onClick={hasStake ? handleCreate : onRequireStake}
                 disabled={creating || !address}
                 className={`px-4 py-2 rounded-lg text-sm transition-colors border ${
                   hasStake && address && !creating
-                    ? 'bg-white/10 hover:bg-white/15 border-white/15 text-white' 
-                    : 'bg-white/5 border-white/10 text-white/60'
+                    ? 'bg-white/10 hover:bg-white/15 border-white/15 text-white' : 'bg-white/5 border-white/10 text-white/60'
                 }`}
               >
                 {creating ? 'Creating...' : hasStake ? 'Create Proposal' : 'Stake to Create'}
@@ -1234,7 +1185,7 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                 <div>
                   <div className="text-white/90 font-medium">{p.title}</div>
                   <div className="text-white/50 text-xs">
-                    🤖 {proposalTypeTag} • ID #{proposalId} • by {p.proposer.slice(0, 8)}...
+                    {proposalTypeTag} • ID #{proposalId} • by {p.proposer.slice(0, 8)}...
                   </div>
                 </div>
                 <div className={`text-xs px-2 py-1 rounded-full ${
@@ -1286,7 +1237,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                     </div>
                   )}
 
-                  {/* Finalize button */}
                   {statusTag === 'Active' && votingEnded && (
                     <button
                       onClick={() => handleFinalize(proposalId)}
@@ -1297,7 +1247,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                     </button>
                   )}
 
-                  {/* Execute button */}
                   {canExecute(p) && (
                     <button
                       onClick={() => handleExecute(proposalId)}
@@ -1309,7 +1258,6 @@ const DaoProposals: React.FC<Props> = ({ onRequireStake }) => {
                   )}
                 </div>
 
-                {/* Cancel button for proposers */}
                 {isProposer && statusTag === 'Active' && (
                   <button
                     onClick={() => handleCancel(proposalId)}

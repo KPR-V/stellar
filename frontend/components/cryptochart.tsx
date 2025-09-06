@@ -4,20 +4,7 @@ import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { TrendingUp, TrendingDown } from "lucide-react"
-
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
+import {ChartConfig, ChartContainer, ChartTooltip} from "@/components/ui/chart"
 
 import { useCryptoChart } from "@/hooks/useCryptoChart"
 
@@ -39,7 +26,6 @@ const chartConfig = {
 export default function CryptoChart({ 
   coinId, 
   coinName, 
-  coinSymbol, 
   currentPrice, 
   priceChangePercentage 
 }: CryptoChartProps) {
@@ -50,24 +36,21 @@ export default function CryptoChart({
 
   useEffect(() => {
     if (coinId && !hasPreloaded) {
-      refetch(coinId, "7") // Start with 7 days for fast initial load
+      refetch(coinId, "7")
       setHasPreloaded(true)
     }
   }, [coinId, refetch, hasPreloaded])
 
-  // Update last updated timestamp when data changes
   useEffect(() => {
     if (chartData.length > 0) {
       setLastUpdated(new Date())
     }
   }, [chartData])
 
-  // Handle time range changes with progressive loading
   const handleTimeRangeChange = useCallback(async (newRange: string) => {
     setTimeRange(newRange)
     
     if (coinId) {
-      // If it's a larger timeframe, load it progressively
       if (parseInt(newRange) > 7) {
         loadMoreData(coinId, newRange)
       } else {
@@ -135,7 +118,6 @@ export default function CryptoChart({
 
   return (
     <div className="bg-black/20 border border-white/10 rounded-xl backdrop-blur-lg">
-      {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-white/10">
         <div>
           <h3 className="text-white/90 text-lg font-semibold mb-1">
@@ -167,7 +149,6 @@ export default function CryptoChart({
           )}
         </div>
 
-        {/* Time Range Selector */}
         <div className="flex bg-black/30 rounded-lg p-1 border border-white/10">
           {timeRangeOptions.map((option) => (
             <button
@@ -189,7 +170,6 @@ export default function CryptoChart({
         </div>
       </div>
 
-      {/* Chart Content */}
       <div className="p-6">
         {initialLoading ? (
           <div className="h-[300px] flex items-center justify-center">
@@ -206,44 +186,19 @@ export default function CryptoChart({
           <ChartContainer config={chartConfig} className="h-[300px] w-full">
             <AreaChart
               data={chartData}
-              margin={{
-                top: 20,
-                right: 20,
-                left: 20,
-                bottom: 20,
-              }}
+              margin={{top: 20, right: 20, left: 20, bottom: 20}}
             >
                 <defs>
                   <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor={priceChange.isPositive ? "#10b981" : "#ef4444"}
-                      stopOpacity={0.3}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={priceChange.isPositive ? "#10b981" : "#ef4444"}
-                      stopOpacity={0.05}
-                    />
+                    <stop offset="5%" stopColor={priceChange.isPositive ? "#10b981" : "#ef4444"} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={priceChange.isPositive ? "#10b981" : "#ef4444"} stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
-                
-                <CartesianGrid 
-                  strokeDasharray="3 3" 
-                  stroke="rgba(255,255,255,0.1)"
-                  vertical={false}
-                />
-                
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                  tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
-                  tickFormatter={formatDate}
-                />
-                
+
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} minTickGap={32} tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }} tickFormatter={formatDate} />
+
                 <YAxis
                   domain={['dataMin - dataMin * 0.01', 'dataMax + dataMax * 0.01']}
                   tickLine={false}
@@ -269,15 +224,8 @@ export default function CryptoChart({
                     )
                   }}
                 />
-                
-                <Area
-                  type="monotone"
-                  dataKey="price"
-                  stroke={priceChange.isPositive ? "#10b981" : "#ef4444"}
-                  strokeWidth={2}
-                  fill="url(#priceGradient)"
-                  fillOpacity={1}
-                />
+
+                <Area type="monotone" dataKey="price" stroke={priceChange.isPositive ? "#10b981" : "#ef4444"} strokeWidth={2} fill="url(#priceGradient)" fillOpacity={1} />
               </AreaChart>
             </ChartContainer>
         )}

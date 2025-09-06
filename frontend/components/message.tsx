@@ -57,13 +57,11 @@ const Message: React.FC<MessageProps> = ({
         bg-black/80 backdrop-blur-sm border border-white/10
         rounded-xl shadow-2xl w-80 max-w-[90vw] relative overflow-hidden
       ">
-        {/* Message Content */}
         <div className="flex items-start justify-between p-4">
           <p className="text-white/90 text-sm font-medium leading-relaxed flex-1 pr-2">
             {message}
           </p>
           
-          {/* Close Button */}
           <button
             onClick={() => {
               setIsAnimatingOut(true)
@@ -78,7 +76,6 @@ const Message: React.FC<MessageProps> = ({
           </button>
         </div>
 
-        {/* Progress Bar */}
         <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
           <div 
             className="h-full bg-gradient-to-r from-white/60 to-white/80 transition-all duration-75 ease-linear"

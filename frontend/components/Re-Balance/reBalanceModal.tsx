@@ -17,26 +17,19 @@ interface ReBalanceModalProps {
 
 const ReBalanceModal: React.FC<ReBalanceModalProps> = ({ 
   className = '',
-  portfolioValue = '0.00',
   balancesWithPrices = {},
-  tokenPrices = {},
-  isLoading = false,
-  lastUpdated = null,
-  userAddress = ''
 }) => {
   const { isModalOpen, closeModal } = useRebalance()
   const modalRef = useRef<HTMLDivElement>(null)
   const [activeTab, setActiveTab] = useState('Arbitrage-Manual')
   const [hasOpportunities, setHasOpportunities] = useState(false)
 
-  // Handle opportunities change callback
   const handleOpportunitiesChange = (hasOpps: boolean) => {
     setHasOpportunities(hasOpps)
   }
 
   const tabs = ['Arbitrage-Manual', 'Arbitrage-Automatic', 'CalibreX Stats']
 
-  // Render tab content based on active tab
   const renderTabContent = () => {
     switch (activeTab) {
       case 'Arbitrage-Manual':
@@ -51,7 +44,6 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
           <div className="p-6">
             <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300">
               <div className="text-center py-12">
-                <div className="text-white/40 mb-2">⚖️</div>
                 <div className="text-white/60 text-sm mb-1">Automatic Arbitrage</div>
                 <div className="text-white/40 text-xs mb-4">Execute arbitrage trades automatically with custom parameters</div>
                 <button 
@@ -83,20 +75,17 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
     }
   }
 
-  // Prevent scrolling when modal is open
   useEffect(() => {
     if (isModalOpen) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'auto'
     }
-
     return () => {
       document.body.style.overflow = 'auto'
     }
   }, [isModalOpen])
 
-  // Handle ESC key to close modal
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -119,17 +108,8 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
       <div 
         ref={modalRef}
-        className={`
-          bg-black/80 backdrop-blur-sm border border-white/10 rounded-2xl
-          w-[900px] max-w-[95vw] h-[700px] max-h-[95vh] overflow-hidden
-          transition-all ease-out
-          animate-in fade-in-0 zoom-in-95 duration-300
-          shadow-xl shadow-black/20
-          font-raleway
-          ${className}
-        `}
+        className={`bg-black/80 backdrop-blur-sm border border-white/10 rounded-2xl w-[900px] max-w-[95vw] h-[700px] max-h-[95vh] overflow-hidden transition-all ease-out animate-in fade-in-0 zoom-in-95 duration-300 shadow-xl shadow-black/20 font-raleway ${className}`}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/20">
           <div>
             <h2 className="text-white/90 text-xl font-medium">Re-Balance Portfolio</h2>
@@ -145,7 +125,6 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
           </button>
         </div>
 
-        {/* Horizontal Tabs */}
         <div className="flex border-b border-white/5 bg-black/10">
           {tabs.map((tab) => (
             <button
@@ -153,16 +132,12 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
               onClick={() => setActiveTab(tab)}
               className={`
                 relative px-6 py-3 transition-all duration-300 ease-out font-raleway font-medium text-sm
-                ${activeTab === tab
-                  ? 'text-white/95 bg-white/5'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/3'
-                }
+                ${activeTab === tab ? 'text-white/95 bg-white/5' : 'text-white/50 hover:text-white/80 hover:bg-white/3'}
               `}
             >
               <div className="flex items-center gap-2">
                 {tab}
 
-                {/* Blinking green dot for Arbitrage-Manual when opportunities exist */}
                 {tab === 'Arbitrage-Manual' && hasOpportunities && (
                   <div className="relative">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -171,7 +146,6 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
                 )}
               </div>
               
-              {/* Active indicator */}
               {activeTab === tab && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>
               )}
@@ -179,42 +153,23 @@ const ReBalanceModal: React.FC<ReBalanceModalProps> = ({
           ))}
         </div>
 
-        {/* Tab Content - Scrollable */}
         <div className="flex-1 bg-black/30 h-[580px] overflow-y-auto faq-scrollbar">
           {renderTabContent()}
         </div>
 
-        {/* Action Buttons - Only show for certain tabs */}
         {activeTab === 'Arbitrage-Manual' && (
           <div className="flex items-center justify-end gap-3 p-6 pt-4 border-t border-white/5 bg-black/10">
             <button 
               onClick={closeModal}
-              className="
-                px-4 py-2 text-sm font-medium rounded-lg
-                text-white/70 bg-white/5 border border-white/10
-                transition-all duration-200
-                hover:bg-white/10 hover:text-white/90 hover:border-white/20
-                active:scale-[0.98]
-                font-raleway
-              "
+              className="px-4 py-2 text-sm font-medium rounded-lg text-white/70 bg-white/5 border border-white/10 transition-all duration-200 hover:bg-white/10 hover:text-white/90 hover:border-white/20 active:scale-[0.98] font-raleway"
             >
               Cancel
             </button>
             <button 
               onClick={() => {
-                // Add your re-balance/execute trade logic here
               }}
               disabled={Object.keys(balancesWithPrices).length === 0}
-              className="
-                bg-white text-black rounded-lg
-                px-4 py-2 text-sm font-medium
-                transition-all duration-300 ease-out
-                hover:bg-white/90 hover:shadow-md
-                focus:bg-white/90 focus:ring-2 focus:ring-white/20
-                active:scale-[0.98]
-                disabled:opacity-50 disabled:cursor-not-allowed
-                font-raleway
-              "
+              className="bg-white text-black rounded-lg px-4 py-2 text-sm font-medium transition-all duration-300 ease-out hover:bg-white/90 hover:shadow-md focus:bg-white/90 focus:ring-2 focus:ring-white/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-raleway"
             >
               Execute Trade
             </button>

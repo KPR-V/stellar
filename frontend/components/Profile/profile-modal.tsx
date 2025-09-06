@@ -16,9 +16,7 @@ interface ProfileModalProps {
 const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('Statistics')
   const { messageState, showMessage, hideMessage } = useMessage()
-
   const tabs = ['Statistics', 'Activity', 'Trade History', 'Settings']
-
   const renderTabContent = () => {
     switch (activeTab) {
       case 'Statistics':
@@ -26,10 +24,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
       case 'Activity':
         return <ActivityTab showMessage={showMessage} />
       case 'Trade History':
-        // ✅ Pass isActive prop to trigger API call only when tab is active
         return <TransactionTab key={activeTab} isActive={activeTab === 'Trade History'} />
       case 'Settings':
-        return <SettingsTab key={activeTab} showMessage={showMessage} /> // Add key to force re-render when tab changes
+        return <SettingsTab key={activeTab} showMessage={showMessage} />
       default:
         return <ProfileStats isActive={activeTab === 'Statistics'} />
     }
@@ -40,7 +37,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 font-raleway">
       <div className="bg-black/80 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl w-[800px] h-[600px] overflow-hidden relative">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/20">
           <h2 className="text-white/90 font-raleway font-medium text-xl">
             Portfolio Overview
@@ -52,38 +48,23 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
             <Minus size={20} />
           </button>
         </div>
-
-        {/* Horizontal Tabs */}
         <div className="flex border-b border-white/5 bg-black/10">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`
-                relative px-6 py-3 transition-all duration-300 ease-out font-raleway font-medium text-sm
-                ${activeTab === tab
-                  ? 'text-white/95 bg-white/5'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/3'
-                }
-              `}
-            >
-              {tab}
-              
-              {/* Active indicator */}
-              {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>
-              )}
+              className={`relative px-6 py-3 transition-all duration-300 ease-out font-raleway font-medium text-sm
+                ${activeTab === tab ? 'text-white/95 bg-white/5' : 'text-white/50 hover:text-white/80 hover:bg-white/3'}`}
+            >{tab} {activeTab === tab && (<div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>)}
             </button>
           ))}
         </div>
 
-        {/* Tab Content - Hidden scrollbar */}
         <div className="flex-1 bg-black/30 h-[520px] overflow-y-scroll scrollbar-hide">
           {renderTabContent()}
         </div>
       </div>
       
-      {/* Message Component - positioned relative to viewport */}
       <Message 
         message={messageState.message}
         isVisible={messageState.isVisible}

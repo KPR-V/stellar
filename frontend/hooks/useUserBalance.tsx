@@ -1,4 +1,3 @@
-// hooks/useUserBalances.tsx
 import { useState, useEffect } from 'react'
 import { useWallet } from './useWallet'
 
@@ -33,12 +32,6 @@ export const useUserBalances = () => {
       const data = await response.json()
       
       if (data.success) {
-        console.log('✅ useUserBalances Hook: User balance fetched successfully through contract call:', {
-          balances: data.data.balances,
-          portfolioValue: data.data.portfolioValue,
-          timestamp: new Date().toISOString()
-        })
-        
         setBalances(data.data.balances)
         setPortfolioValue(data.data.portfolioValue)
         setLastUpdated(new Date())
@@ -53,7 +46,6 @@ export const useUserBalances = () => {
     }
   }
 
-  // Auto-fetch every minute if user is connected
   useEffect(() => {
     if (!address || !isConnected) {
       setBalances({})
@@ -61,10 +53,8 @@ export const useUserBalances = () => {
       return
     }
 
-    fetchUserBalances() // Fetch immediately
-
-    const interval = setInterval(fetchUserBalances, 60000) // Every minute
-
+    fetchUserBalances()
+    const interval = setInterval(fetchUserBalances, 120000)
     return () => clearInterval(interval)
   }, [address, isConnected])
 

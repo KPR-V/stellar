@@ -17,7 +17,7 @@ interface WalletContextType {
   setIsLoading: (loading: boolean) => void
   setPortfolioValue: (value: string) => void
   setProfitLoss: (pl: { value: string; percentage: string; isProfit: boolean }) => void
-  setWalletKit: (kit: StellarWalletsKit | null) => void // ✅ Add setWalletKit
+  setWalletKit: (kit: StellarWalletsKit | null) => void 
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
@@ -39,7 +39,6 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
   const isConnected = Boolean(address)
 
-  // Check stored wallet address on mount
   useEffect(() => {
     const storedAddress = localStorage.getItem('stellarWalletAddress')
     const storedWalletId = localStorage.getItem('stellarSelectedWallet')

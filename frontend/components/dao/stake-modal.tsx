@@ -7,10 +7,9 @@ import type { StakeInfo } from '../../daobindings/src'
 interface Props {
   isOpen: boolean
   onClose: () => void
-  onStakeUpdate?: () => void // Callback to refresh parent components
+  onStakeUpdate?: () => void
 }
 
-// Transaction status types for better UX
 type TransactionStatus = 'idle' | 'preparing' | 'signing' | 'submitting' | 'pending' | 'success' | 'error'
 
 const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
@@ -22,24 +21,20 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
   const [stakeInfo, setStakeInfo] = useState<StakeInfo | null>(null)
   const [currentStake, setCurrentStake] = useState<string>('0')
   const [totalStaked, setTotalStaked] = useState<string>('0')
-  
-  // Enhanced transaction status tracking
   const [transactionStatus, setTransactionStatus] = useState<TransactionStatus>('idle')
   const [transactionHash, setTransactionHash] = useState<string>('')
   const [statusMessage, setStatusMessage] = useState<string>('')
   
-  // Auto refresh intervals
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (isOpen && address) {
       fetchStakeInfo()
-      // Set up refresh interval when modal is open
       const interval = setInterval(() => {
         if (transactionStatus === 'pending') {
           fetchStakeInfo()
         }
-      }, 3000) // Refresh every 3 seconds when transaction is pending
+      }, 30000)
       
       setRefreshInterval(interval)
       
@@ -47,7 +42,6 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
         if (interval) clearInterval(interval)
       }
     } else {
-      // Clear interval when modal is closed
       if (refreshInterval) {
         clearInterval(refreshInterval)
         setRefreshInterval(null)
@@ -55,7 +49,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
     }
   }, [isOpen, address, transactionStatus])
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (refreshInterval) {
@@ -102,7 +96,6 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
         setTotalStaked(totalData.data.totalStaked || '0')
       }
       
-      // Trigger parent component refresh if callback provided
       if (onStakeUpdate) {
         onStakeUpdate()
       }
@@ -110,7 +103,6 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
       console.error('Failed to fetch stake info:', e)
     }
   }
-
   if (!isOpen) return null
 
   const handleStake = async () => {
@@ -130,7 +122,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
       return
     }
     
-    // Reset states
+    // Reset
     setError(null)
     setSuccess(null)
     setTransactionHash('')
@@ -139,7 +131,6 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
     
     try {
       console.log(`Preparing ${mode} transaction for`, amt, 'KALE')
-      
       const action = mode === 'stake' ? 'stake_kale' : 'unstake_kale'
       const prepareResponse = await fetch('/api/dao', {
         method: 'POST',
@@ -162,10 +153,8 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
 
       const preparedXdr = prepareData.data.transactionXdr
       console.log('Transaction prepared, requesting signature...')
-      
       setTransactionStatus('signing')
       setStatusMessage('Please sign the transaction in your wallet...')
-
       const signResult = await walletKit.signTransaction(preparedXdr, {
         address,
         networkPassphrase: WalletNetwork.TESTNET,
@@ -200,22 +189,15 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
         setStatusMessage('Transaction completed successfully!')
         setSuccess(`${mode === 'stake' ? 'Stake' : 'Unstake'} successful! Hash: ${submitData.data.hash}`)
         setAmount('')
-        
-        // Refresh stake info immediately
         await fetchStakeInfo()
-        
-        // Auto-close after 3 seconds
         setTimeout(() => {
           onClose()
           setTransactionStatus('idle')
           setStatusMessage('')
         }, 3000)
       } else {
-        // Transaction is pending
         setTransactionStatus('pending')
         setStatusMessage('Transaction is being processed by the network...')
-        
-        // Start polling for transaction completion
         pollTransactionStatus(submitData.data.hash)
       }
       
@@ -228,24 +210,19 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
 
   const pollTransactionStatus = async (hash: string) => {
     let attempts = 0
-    const maxAttempts = 30 // 1.5 minutes max
+    const maxAttempts = 30
     
     const poll = async () => {
       try {
-        // Check transaction status via a simple GET or by re-fetching stake info
         await fetchStakeInfo()
-        
-        // For now, we'll consider the transaction successful after a few polls
-        // In a real implementation, you'd check the actual transaction status
         attempts++
         
-        if (attempts >= 3) { // After 9 seconds, assume success
+        if (attempts >= 3) {
           setTransactionStatus('success')
           setStatusMessage('Transaction completed!')
           setSuccess(`${mode === 'stake' ? 'Stake' : 'Unstake'} successful! Hash: ${hash}`)
-          setAmount('')
-          
-          setTimeout(() => {
+          setAmount('')  
+            setTimeout(() => {
             onClose()
             setTransactionStatus('idle')
             setStatusMessage('')
@@ -255,7 +232,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
         }
         
         if (attempts < maxAttempts) {
-          setTimeout(poll, 3000) // Poll every 3 seconds
+          setTimeout(poll, 3000) 
         } else {
           setTransactionStatus('error')
           setError('Transaction taking too long to confirm')
@@ -271,7 +248,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
       }
     }
     
-    setTimeout(poll, 3000) // Start polling after 3 seconds
+    setTimeout(poll, 3000)
   }
 
   const getStatusColor = (status: TransactionStatus) => {
@@ -333,7 +310,6 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
           </button>
         </div>
 
-        {/* Current stake info */}
         <div className="bg-black/30 rounded-lg p-3 mb-4 text-sm">
           <div className="text-white/70 mb-2">Current Stake Info:</div>
           <div className="text-white">Amount: {formatStakeAmount(currentStake)} KALE</div>
@@ -344,14 +320,13 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
               <div>Last Update: {formatTimestamp(stakeInfo.last_stake_update)}</div>
               {mode === 'unstake' && (
                 <div className={canUnstake() ? 'text-green-400' : 'text-red-400'}>
-                  {canUnstake() ? '✅ Can unstake' : '❌ Cooldown period (7 days) not met'}
+                  {canUnstake() ? 'Can unstake' : 'Cooldown period (7 days) not met'}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Transaction Status Display */}
         {transactionStatus !== 'idle' && (
           <div className={`text-xs p-3 rounded-lg border mb-4 ${getStatusColor(transactionStatus)}`}>
             <div className="flex items-center gap-2">
@@ -360,12 +335,12 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
               )}
               <div>
                 <div className="font-medium">
-                  {transactionStatus === 'preparing' && '🔧 Preparing Transaction'}
-                  {transactionStatus === 'signing' && '✍️ Awaiting Signature'}
-                  {transactionStatus === 'submitting' && '📤 Submitting Transaction'}
-                  {transactionStatus === 'pending' && '⏳ Processing'}
-                  {transactionStatus === 'success' && '✅ Success'}
-                  {transactionStatus === 'error' && '❌ Error'}
+                  {transactionStatus === 'preparing' && 'Preparing Transaction'}
+                  {transactionStatus === 'signing' && 'Awaiting Signature'}
+                  {transactionStatus === 'submitting' && 'Submitting Transaction'}
+                  {transactionStatus === 'pending' && 'Processing'}
+                  {transactionStatus === 'success' && 'Success'}
+                  {transactionStatus === 'error' && 'Error'}
                 </div>
                 <div className="text-xs opacity-80 mt-1">{statusMessage}</div>
                 {transactionHash && (
@@ -378,15 +353,13 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
           </div>
         )}
 
-        {/* Mode selection */}
         <div className="flex rounded-lg border border-white/10 overflow-hidden mb-4">
           <button
             onClick={() => setMode('stake')}
             disabled={isTransactionInProgress()}
             className={`flex-1 px-3 py-2 text-sm disabled:opacity-50 ${
               mode === 'stake' 
-                ? 'bg-white/10 text-white' 
-                : 'text-white/60 hover:text-white/80'
+                ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white/80'
             }`}
           >
             Stake
@@ -396,8 +369,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate }) => {
             disabled={Number(currentStake) === 0 || isTransactionInProgress()}
             className={`flex-1 px-3 py-2 text-sm disabled:opacity-50 ${
               mode === 'unstake' 
-                ? 'bg-white/10 text-white' 
-                : 'text-white/60 hover:text-white/80'
+                ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white/80'
             }`}
           >
             Unstake

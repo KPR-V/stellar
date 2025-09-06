@@ -57,10 +57,8 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
     transactionXdr?: string
   } | null>(null)
   
-  // Get wallet context
   const { address: userAddress, walletKit } = useWallet()
 
-  // Clear execution result when modal opens with new opportunity
   useEffect(() => {
     if (isOpen && opportunity) {
       setExecutionResult(null)
@@ -80,44 +78,22 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
     return numPrice.toFixed(4)
   }
 
-  const formatLargeNumber = (value: string) => {
-    const num = parseFloat(value) / 1e7
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(2) + 'M'
-    }
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K'
-    }
-    return num.toFixed(2)
-  }
-
   const formatDeviationBps = (bps: number) => {
     return (bps / 100).toFixed(2) + '%'
   }
 
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString()
-  }
-
-  const getConfidenceColor = (score: number) => {
-    if (score >= 8000) return 'text-green-400'
-    if (score >= 6000) return 'text-yellow-400'
-    return 'text-red-400'
-  }
-
   const getConfidenceStrokeColor = (score: number) => {
-    if (score >= 8000) return '#4ade80' // green-400
-    if (score >= 6000) return '#facc15' // yellow-400
-    return '#f87171' // red-400
+    if (score >= 8000) return '#4ade80'
+    if (score >= 6000) return '#facc15'
+    return '#f87171' 
   }
 
   const getConfidencePercentage = (score: number) => {
-    return Math.min(score / 100, 100) // Cap at 100%
+    return Math.min(score / 100, 100)
   }
 
   const calculateTradePreview = () => {
     if (!tradeAmount || parseFloat(tradeAmount) <= 0) return null
-    
     const amount = parseFloat(tradeAmount)
     const estimatedProfitRaw = parseFloat(opportunity.base_opportunity.estimated_profit) / 1e7
     const direction = opportunity.base_opportunity.trade_direction
@@ -130,13 +106,12 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
       buyAsset: direction === 'SELL' ? quoteAsset : baseAsset,
       sellAmount: amount,
       buyAmount: direction === 'SELL' ? amount * price : amount / price,
-      estimatedProfit: (estimatedProfitRaw * amount) / 100, // Proportional to trade size
+      estimatedProfit: (estimatedProfitRaw * amount) / 100, 
       price: price,
       direction
     }
   }
 
-  // Circular progress component
   const CircularProgress: React.FC<{ value: number; size: number; strokeWidth: number }> = ({ value, size, strokeWidth }) => {
     const radius = (size - strokeWidth) / 2
     const circumference = radius * 2 * Math.PI
@@ -151,7 +126,6 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
           height={size}
           className="transform -rotate-90"
         >
-          {/* Background circle */}
           <circle
             cx={center}
             cy={center}
@@ -161,7 +135,6 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
             fill="none"
             className="text-white/10"
           />
-          {/* Progress circle */}
           <circle
             cx={center}
             cy={center}
@@ -173,9 +146,7 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
             strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
             className="transition-all duration-500 ease-out"
-            style={{
-              filter: `drop-shadow(0 0 6px ${getConfidenceStrokeColor(opportunity.confidence_score)}40)`
-            }}
+            style={{filter: `drop-shadow(0 0 6px ${getConfidenceStrokeColor(opportunity.confidence_score)}40)`}}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -202,7 +173,6 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
     setExecutionResult(null)
 
     try {
-      // Create the opportunity object with hardcoded venue recommendations and real data
       const opportunityWithHardcodedVenue = {
         base_opportunity: {
           pair: opportunity.base_opportunity.pair,
@@ -234,7 +204,6 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
         venueAddress: "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS"
       })
 
-      // Step 1: Prepare the transaction for the contract's execute_user_arbitrage function
       console.log('📝 Step 1: Preparing contract transaction...')
       const prepareResponse = await fetch('/api/contract', {
         method: 'POST',
@@ -271,7 +240,6 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
         direction: tradeDetails?.direction
       })
 
-      // Step 2: Sign the transaction with the user's wallet
       console.log('🔐 Step 2: Requesting wallet signature...')
       
       const walletResponse = await walletKit.signTransaction(transactionXdr, {
@@ -280,7 +248,6 @@ const AdvancedOpportunitiesModal: React.FC<AdvancedOpportunitiesModalProps> = ({
 
       console.log('✅ Transaction signed successfully, now submitting to network...')
 
-      // Step 3: Submit the signed transaction to the network
       console.log('📡 Step 3: Submitting transaction to Stellar network...')
       const submitResponse = await fetch('/api/contract/submit', {
         method: 'POST',
@@ -332,7 +299,6 @@ The transaction was signed but could not be submitted to the network. Please try
       if (error instanceof Error) {
         errorMessage = error.message
         
-        // Handle specific wallet errors
         if (errorMessage.includes('User declined')) {
           errorMessage = 'Transaction was cancelled by user'
         } else if (errorMessage.includes('network')) {

@@ -8,19 +8,15 @@ import StakeModal from '../../components/dao/stake-modal'
 const Page = () => {
   const [isStakeOpen, setIsStakeOpen] = React.useState(false)
   const [refreshKey, setRefreshKey] = React.useState(0)
-
   const handleStakeUpdate = () => {
-    // Trigger refresh of DAO proposals component
     setRefreshKey(prev => prev + 1)
   }
 
   return (
     <div className="relative min-h-screen w-full">
       <AnimatedBackground />
-
       <div className="relative z-10">
         <NavBarPage />
-
         <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-white text-2xl md:text-3xl font-light font-raleway">DAO Governance</h1>

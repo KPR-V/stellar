@@ -1,13 +1,8 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
-import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
+import {ChartConfig, ChartContainer, ChartTooltip} from "@/components/ui/chart"
 
 interface ProfitDataPoint {
   date: string
@@ -34,47 +29,36 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
   const [dailyProfitPercentage, setDailyProfitPercentage] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const previousTotalProfitRef = useRef<number | null>(null)
 
-  // Load saved data on component mount
   useEffect(() => {
-    // Load saved chart data
     const savedChartData = localStorage.getItem('bot_profit_chart_data')
     if (savedChartData) {
       try {
         const parsedData = JSON.parse(savedChartData)
         setChartData(parsedData)
-        console.log('BotStatistics: Loaded chart data from localStorage:', parsedData)
       } catch (err) {
         console.error('BotStatistics: Error parsing saved chart data:', err)
       }
     }
 
-    // Load previous total profit for calculations
     const savedPreviousProfit = localStorage.getItem('bot_previous_total_profit')
     if (savedPreviousProfit) {
       previousTotalProfitRef.current = parseFloat(savedPreviousProfit)
-      console.log('BotStatistics: Loaded previous total profit:', previousTotalProfitRef.current)
     }
 
-    // Load saved daily profit
     const savedDailyProfit = localStorage.getItem('bot_daily_profit')
     if (savedDailyProfit) {
       const parsedProfit = JSON.parse(savedDailyProfit)
       setDailyProfit(parsedProfit.profit)
       setDailyProfitPercentage(parsedProfit.percentage)
-      console.log('BotStatistics: Loaded saved daily profit:', parsedProfit)
     }
-
     fetchBotPerformanceMetrics()
-
-    // Set up interval to call API every 24 hours
     intervalRef.current = setInterval(() => {
       console.log('BotStatistics: Daily interval triggered')
       fetchBotPerformanceMetrics()
-    }, 86400000) // 24 hours
+    }, 86400000)
 
     return () => {
       if (intervalRef.current) {
@@ -88,33 +72,25 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
     setIsLoadingMetrics(true)
     setError(null)
     
-    try {
-      console.log('BotStatistics: Fetching bot performance metrics')
-      
+    try {      
       const response = await fetch('/api/contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'get_performance_metrics',
-          days: 30 // Get 30 days of bot performance
+          days: 30
         }),
       })
 
       const data = await response.json()
       
       if (data.success && data.data.metrics) {
-        console.log('BotStatistics: Bot performance metrics fetched successfully:', data.data.metrics)
         setPerformanceMetrics(data.data.metrics)
-        
-        // Calculate daily profit for chart
         calculateDailyProfit(data.data.metrics)
-        
         setLastUpdated(new Date())
       } else {
         console.error('BotStatistics: Failed to fetch bot performance metrics:', data.error)
         setError(data.error || 'Failed to fetch bot performance')
-        
-        // Set default empty metrics
         setPerformanceMetrics({
           total_trades: 0,
           successful_trades: 0,
@@ -129,8 +105,6 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
     } catch (err) {
       console.error('BotStatistics: Error fetching bot performance metrics:', err)
       setError('Network error occurred')
-      
-      // Set default empty metrics
       setPerformanceMetrics({
         total_trades: 0,
         successful_trades: 0,
@@ -147,33 +121,21 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
   }
 
   const calculateDailyProfit = (metrics: any) => {
-    const currentTotalProfit = parseFloat(metrics.total_profit || '0') / 1e7 // Convert from stroops
+    const currentTotalProfit = parseFloat(metrics.total_profit || '0') / 1e7
     const today = new Date()
     const todayString = today.toISOString().split('T')[0]
-
-    console.log('BotStatistics: Current total profit:', currentTotalProfit)
-    console.log('BotStatistics: Previous total profit:', previousTotalProfitRef.current)
-
-    // Calculate daily profit
     let calculatedDailyProfit = 0
     let calculatedPercentage = 0
 
     if (previousTotalProfitRef.current !== null) {
       calculatedDailyProfit = currentTotalProfit - previousTotalProfitRef.current
-      
-      // Calculate percentage based on total volume (prevent division by zero)
       const totalVolume = parseFloat(metrics.total_volume || '0') / 1e7
       if (totalVolume > 0 && Math.abs(calculatedDailyProfit) > 0.01) {
         calculatedPercentage = (calculatedDailyProfit / totalVolume) * 100
       }
-
-      console.log('BotStatistics: Calculated daily profit:', calculatedDailyProfit)
-      console.log('BotStatistics: Calculated daily profit percentage:', calculatedPercentage)
-
       setDailyProfit(calculatedDailyProfit)
       setDailyProfitPercentage(calculatedPercentage)
 
-      // Save to localStorage
       const profitData = {
         profit: calculatedDailyProfit,
         percentage: calculatedPercentage,
@@ -181,11 +143,9 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
       }
       localStorage.setItem('bot_daily_profit', JSON.stringify(profitData))
 
-      // Update chart data
       updateChartData(todayString, calculatedDailyProfit)
     }
 
-    // Update previous total profit for next calculation
     previousTotalProfitRef.current = currentTotalProfit
     localStorage.setItem('bot_previous_total_profit', currentTotalProfit.toString())
   }
@@ -193,7 +153,6 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
   const updateChartData = (dateString: string, profitValue: number) => {
     setChartData(prevData => {
       const existingIndex = prevData.findIndex(point => point.date === dateString)
-      
       const newDataPoint: ProfitDataPoint = {
         date: dateString,
         profit: parseFloat(profitValue.toFixed(4)),
@@ -202,20 +161,15 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
 
       let newData: ProfitDataPoint[]
       if (existingIndex >= 0) {
-        // Update existing data point
         newData = [...prevData]
         newData[existingIndex] = newDataPoint
       } else {
-        // Add new data point and keep only last 30 days
         newData = [...prevData, newDataPoint]
           .sort((a, b) => a.timestamp - b.timestamp)
           .slice(-30)
       }
 
-      // Save to localStorage
-      localStorage.setItem('bot_profit_chart_data', JSON.stringify(newData))
-      console.log('BotStatistics: Updated chart data:', newData)
-      
+      localStorage.setItem('bot_profit_chart_data', JSON.stringify(newData))      
       return newData
     })
   }
@@ -243,7 +197,6 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
     return (
       <div className={`bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/5 hover:border-white/8 transition-all duration-300 ${className}`}>
         <div className="text-center py-8">
-          <div className="text-red-400 mb-2">⚠️</div>
           <div className="text-white/70 text-sm mb-2">Failed to load bot statistics</div>
           <div className="text-white/50 text-xs mb-4">{error}</div>
           <button 
@@ -259,7 +212,6 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
 
   return (
     <div className={`space-y-6 ${className}`}>
-      {/* Header with refresh status */}
       <div className="flex justify-between items-center">
         <h3 className="font-medium text-white/80 text-lg">CalibreX Performance</h3>
         <div className="flex items-center gap-2 text-xs text-white/50">
@@ -275,7 +227,6 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
         </div>
       </div>
 
-      {/* Daily Profit Overview */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300">
           <h4 className="text-white/80 text-sm font-medium mb-2">Platform Total Profit</h4>
@@ -286,18 +237,15 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
             {dailyProfit >= 0 ? '+' : ''}${dailyProfit.toFixed(2)} (24h)
           </p>
           
-          {/* Bot Profit Chart */}
           <div className="mt-4">
             <div className="bg-black/20 border border-white/5 rounded-lg p-3">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-white text-xs mb-1">Platform Daily Profit Trend</div>
               </div>
-
               <div className="h-[130px]">
                 {chartData.length === 0 ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="text-white/40 text-xs text-center">
-                      <div className="text-white/30 mb-1">🤖</div>
                       <div>No Platform trading data available</div>
                       <div className="text-white/30 mt-1">Platform will start generating data soon</div>
                     </div>
@@ -306,43 +254,19 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
                   <ChartContainer config={chartConfig} className="h-full w-full">
                     <AreaChart
                       data={chartData}
-                      margin={{
-                        top: 5,
-                        right: 5,
-                        left: 5,
-                        bottom: 5,
-                      }}
+                      margin={{top: 5, right: 5, left: 5, bottom: 5}}
                     >
                       <defs>
                         <linearGradient id="botProfitGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop
-                            offset="5%"
-                            stopColor={isChartPositive ? "#10b981" : "#ef4444"}
-                            stopOpacity={0.3}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor={isChartPositive ? "#10b981" : "#ef4444"}
-                            stopOpacity={0.05}
-                          />
+                          <stop offset="5%" stopColor={isChartPositive ? "#10b981" : "#ef4444"} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={isChartPositive ? "#10b981" : "#ef4444"} stopOpacity={0.05} />
                         </linearGradient>
                       </defs>
-                      
-                      <CartesianGrid 
-                        strokeDasharray="2 2" 
-                        stroke="rgba(255,255,255,0.1)"
-                        vertical={false}
-                      />
-                      
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 9 }}
-                        tickFormatter={formatDate}
-                        interval="preserveStartEnd"
-                      />
-                      
+
+                      <CartesianGrid strokeDasharray="2 2" stroke="rgba(255,255,255,0.1)" vertical={false} />
+
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 9 }} tickFormatter={formatDate} interval="preserveStartEnd" />
+
                       <YAxis
                         tickLine={false}
                         axisLine={false}
@@ -359,7 +283,6 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
                         cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1 }}
                         content={({ active, payload, label }) => {
                           if (!active || !payload || !payload.length) return null
-                          
                           const value = payload[0].value as number
                           return (
                             <div className="bg-black/90 border border-white/20 backdrop-blur-lg rounded-lg p-2 shadow-xl">
@@ -391,11 +314,10 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
         </div>
 
         <div className="bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300">
-          <h4 className="text-white/80 text-sm font-medium mb-4">Platform Performance Metrics (30 days)</h4>
+          <h4 className="text-white/80 text-sm font-medium mb-4">Platform Performance Metrics</h4>
           
           {!performanceMetrics && !isLoadingMetrics ? (
             <div className="text-center py-8">
-              <div className="text-white/40 mb-2">🤖</div>
               <div className="text-white/60 text-sm mb-1">No Platform trading data available</div>
               <div className="text-white/40 text-xs">Platform hasn't executed any trades yet</div>
             </div>

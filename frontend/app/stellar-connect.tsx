@@ -1,17 +1,6 @@
 "use client";
 import React from "react";
-import {
-  StellarWalletsKit,
-  WalletNetwork,
-  ISupportedWallet,
-  xBullModule,
-  FreighterModule,
-  AlbedoModule,
-} from "@creit.tech/stellar-wallets-kit";
-import {
-  WalletConnectAllowedMethods,
-  WalletConnectModule,
-} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import {StellarWalletsKit, WalletNetwork, ISupportedWallet, xBullModule, FreighterModule, AlbedoModule} from "@creit.tech/stellar-wallets-kit";
 import Message from "../components/message";
 import { useMessage } from "../hooks/useMessage";
 import { useWallet } from "../hooks/useWallet";
@@ -35,7 +24,7 @@ export default function StellarConnect() {
       const defaultConfig = {
         min_profit_bps: 100,
         max_trade_size: 1000000000,
-        slippage_tolerance_bps: 100,
+        slippage_tolerance_bps: 20000,
         enabled: true,
         max_gas_price: 100000,
         min_liquidity: 100000000,
@@ -48,7 +37,6 @@ export default function StellarConnect() {
         var_limit: 1000000000,
       };
 
-      // ✅ Step 1: Get transaction XDR from server
       const response = await fetch("/api/contract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -63,16 +51,14 @@ export default function StellarConnect() {
       const data = await response.json();
 
       if (data.success) {
-        // ✅ Step 2: Sign transaction with wallet
         const { signedTxXdr } = await kit.signTransaction(data.data.transactionXdr, {
           address: walletAddress,
           networkPassphrase: WalletNetwork.TESTNET,
         });
 
-        // ✅ Step 3: Submit signed transaction (either via server or directly)
         await submitSignedTransaction(signedTxXdr);
         
-        showMessage("🎉 Account initialized successfully on blockchain!");
+        showMessage("Account initialized successfully on blockchain!");
       } else {
         throw new Error(data.error || "Failed to prepare transaction.");
       }
@@ -84,24 +70,16 @@ export default function StellarConnect() {
     }
   };
 
-  // Helper function to submit signed transaction
   const submitSignedTransaction = async (signedXdr: string) => {
-    // Option A: Submit via your API
     const response = await fetch("/api/contract/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ signedXdr }),
     });
-
-    // Option B: Or submit directly to Stellar network
-    // const server = new StellarRpc.Server('https://soroban-testnet.stellar.org');
-    // const transaction = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
-    // await server.sendTransaction(transaction);
   };
 
  const connectWallet = async () => {
     setIsLoading(true);
-
     try {
       const kit = new StellarWalletsKit({
         network: WalletNetwork.TESTNET,
@@ -109,7 +87,6 @@ export default function StellarConnect() {
           new xBullModule(),
           new FreighterModule(),
           new AlbedoModule(),
-          // ... other modules
         ],
       });
 
@@ -122,7 +99,6 @@ export default function StellarConnect() {
           try {
             await kit.setWallet(option.id);
             const { address: walletAddress } = await kit.getAddress();
-
             if (walletAddress) {
               setAddress(walletAddress);
               localStorage.setItem("stellarWalletAddress", walletAddress);
@@ -135,8 +111,6 @@ export default function StellarConnect() {
                 percentage: '0.00',
                 isProfit: true
               });
-
-              // ✅ Now initialize account with proper wallet integration
               await initializeAccount(walletAddress, kit);
             }
           } catch (error) {
@@ -163,15 +137,12 @@ export default function StellarConnect() {
     setAddress(null);
     setWalletKit(null);
     localStorage.removeItem("stellarWalletAddress");
-    
-    // Reset portfolio values
     setPortfolioValue('0.00');
     setProfitLoss({
       value: '0.00',
       percentage: '0.00',
       isProfit: true
     });
-    
     showMessage("Wallet disconnected successfully.");
   };
 
@@ -182,15 +153,11 @@ export default function StellarConnect() {
           <button
             onClick={connectWallet}
             disabled={isLoading}
-            className="
-              bg-black/20 backdrop-blur-sm border border-white/20 rounded-full
-              px-6 py-2.5 text-sm text-white font-medium outline-none
-              transition-all duration-300 ease-out
+            className="bg-black/20 backdrop-blur-sm border border-white/20 rounded-full
+              px-6 py-2.5 text-sm text-white font-medium outline-none transition-all duration-300 ease-out
               hover:border-white/30 hover:bg-black/25 hover:shadow-lg hover:shadow-white/5
               focus:border-white/40 focus:bg-black/30 focus:ring-2 focus:ring-white/10
-              active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed
-              font-raleway
-            "
+              active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-raleway"
           >
             {isLoading ? "Connecting..." : "Connect Stellar Wallet"}
           </button>
@@ -205,10 +172,7 @@ export default function StellarConnect() {
 
             <button
               onClick={disconnectWallet}
-              className="
-                text-white/60 hover:text-white/90 text-sm
-                transition-colors duration-300 font-raleway
-              "
+              className="text-white/60 hover:text-white/90 text-smtransition-colors duration-300 font-raleway"
             >
               Disconnect
             </button>
@@ -216,7 +180,6 @@ export default function StellarConnect() {
         )}
       </div>
 
-      {/* Message Component */}
       <Message
         message={messageState.message}
         isVisible={messageState.isVisible}

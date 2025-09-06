@@ -2,12 +2,7 @@
 
 import React from 'react'
 import { LabelList, Pie, PieChart } from "recharts"
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
+import {ChartConfig, ChartContainer, ChartTooltip} from "@/components/ui/chart"
 
 interface BalanceData {
   balance: string
@@ -34,25 +29,19 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
   portfolioValue,
   className = ''
 }) => {
-  // Enhanced token mapping with comprehensive list
   const getTokenInfo = (tokenAddress: string) => {
     const tokenMap: { [key: string]: { symbol: string, name: string } } = {
-      // Native
       'native': { symbol: 'XLM', name: 'Stellar Lumens' },
       
-      // Current active SAC addresses
       'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQAHHAGCN6FM': { symbol: 'XLM', name: 'Stellar Lumens' },
       'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' },
       'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ': { symbol: 'EURC', name: 'Euro Coin' },
       
-      // Alternative SAC addresses
       'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2DA2KTP5PS': { symbol: 'USDC', name: 'USD Coin' },
       
-      // Known testnet issuer addresses
       'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' },
       'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' },
       
-      // Mainnet common tokens
       'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA': { symbol: 'USDC', name: 'USD Coin (Mainnet)' },
       'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU': { symbol: 'USDC', name: 'USD Coin' }
     }
@@ -75,21 +64,19 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
     }
   }
 
-  // Color palette for the chart
   const chartColors = [
-    "var(--chart-1)", // Blue
-    "var(--chart-2)", // Green  
-    "var(--chart-3)", // Orange
-    "var(--chart-4)", // Purple
-    "var(--chart-5)", // Red
-    "#10b981", // Emerald
-    "#8b5cf6", // Violet
-    "#f59e0b", // Amber
-    "#ef4444", // Red
-    "#06b6d4", // Cyan
+    "var(--chart-1)", 
+    "var(--chart-2)",  
+    "var(--chart-3)", 
+    "var(--chart-4)", 
+    "var(--chart-5)",
+    "#10b981",  
+    "#8b5cf6", 
+    "#f59e0b", 
+    "#ef4444",
+    "#06b6d4", 
   ]
 
-  // Transform balance data into chart data
   const chartData: ChartDataPoint[] = React.useMemo(() => {
     const totalValue = parseFloat(portfolioValue.replace(/[,$]/g, '')) || 0
     
@@ -111,10 +98,9 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
           fill: chartColors[index % chartColors.length]
         }
       })
-      .sort((a, b) => b.value - a.value) // Sort by value descending
+      .sort((a, b) => b.value - a.value) 
   }, [balancesWithPrices, portfolioValue])
 
-  // Create chart config dynamically
   const chartConfig: ChartConfig = React.useMemo(() => {
     const config: ChartConfig = {
       value: {
@@ -145,7 +131,6 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
     return (
       <div className={`bg-black/40 backdrop-blur-sm rounded-xl p-5 border border-white/15 hover:border-white/25 transition-all duration-300 ${className}`}>
         <div className="text-white/50 text-sm text-center py-8">
-          <div className="mb-2">📊</div>
           <div>No portfolio data available</div>
           <div className="text-xs text-white/40 mt-2">Connect your wallet and ensure you have assets</div>
         </div>
@@ -196,7 +181,6 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
                 stroke="none"
                 fontSize={10}
                 formatter={(value: string) => {
-                  // Find the corresponding data point to check percentage
                   const dataPoint = chartData.find(item => item.symbol === value)
                   if (!dataPoint || dataPoint.percentage <= 5) {
                     return ''
@@ -208,7 +192,6 @@ const PortfolioPieChart: React.FC<PieChartProps> = ({
           </PieChart>
         </ChartContainer>
 
-        {/* Legend */}
         <div className="mt-4 space-y-2">
           {chartData.slice(0, 5).map((item) => (
             <div key={item.asset} className="flex items-center justify-between text-xs">
