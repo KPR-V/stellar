@@ -1,119 +1,139 @@
-# README: Decentralized Arbitrage Trading System
+# CalibreX - Decentralized Arbitrage Trading Platform
 
-Welcome to your fully deployed, multi-contract decentralized arbitrage trading platform on the Stellar network! This system integrates four specialized Soroban smart contracts to create a robust, automated, and community-governed DeFi solution.
+![Stellar](https://img.shields.io/badge/Stellar-Network-blue) ![Next.js](https://img.shields.io/badge/Next.js-14-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue) ![Rust](https://img.shields.io/badge/Rust-Soroban-orange)
 
-***
+CalibreX is an automated arbitrage trading system built on Stellar's Soroban smart contracts. The platform identifies and exploits pricing inefficiencies across liquidity pools, executing trades automatically with real-time oracle integration and DAO governance.
 
-## 📋 Live System Information
+## Key Features
+
+- **Automated Arbitrage**: Real-time opportunity detection and execution across Stellar liquidity pools
+- **Custodial Management**: Secure user fund management with smart contract custody
+- **DAO Governance**: Community-driven decision making with KALE token staking
+- **Risk Management**: Programmable risk framework with automated controls
+- **Oracle Integration**: Real-time price feeds for accurate market data
+
+## Active Contract Addresses
 
 **Network**: Stellar Testnet
-**Deployment Date**: Sunday, August 24, 2025
-**Admin Account**: `GB2HVFY6ZEDSMOBOB5NYXUMMB75BJHJ4JJ6YUT65IC2DUVKSU27PFV5D`
 
-### **Live Contract Addresses**
+- **Risk Manager**: [`CAGLHASPDWED7XBJ6VOFRUD5QRTEO4OP7WTGSRP5ENE5DGRMEAQKSEE4`](https://stellar.expert/explorer/testnet/contract/CAGLHASPDWED7XBJ6VOFRUD5QRTEO4OP7WTGSRP5ENE5DGRMEAQKSEE4)
+- **Arbitrage Bot**: [`CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE`](https://stellar.expert/explorer/testnet/contract/CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE)
+- **DAO Governance**: [`CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3`](https://stellar.expert/explorer/testnet/contract/CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3)
+- **Trading Strategies**: [`CCWXGLZ3J7REF2DHXINHM3WOHXXSFJQ5LQRIAGDLUVWABKLC5M7XNHJA`](https://stellar.expert/explorer/testnet/contract/CCWXGLZ3J7REF2DHXINHM3WOHXXSFJQ5LQRIAGDLUVWABKLC5M7XNHJA)
 
-You can monitor all on-chain activity for your contracts using the Stellar Expert explorer:
+## Project Structure
 
-*   **Risk Manager**: [`CAGLHASPDWED7XBJ6VOFRUD5QRTEO4OP7WTGSRP5ENE5DGRMEAQKSEE4`](https://stellar.expert/explorer/testnet/contract/CAGLHASPDWED7XBJ6VOFRUD5QRTEO4OP7WTGSRP5ENE5DGRMEAQKSEE4)
-*   **Arbitrage Bot**: [`CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE`](https://stellar.expert/explorer/testnet/contract/CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE)
-*   **DAO Governance**: [`CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3`](https://stellar.expert/explorer/testnet/contract/CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3)
-*   **Trading Strategies**: [`CCWXGLZ3J7REF2DHXINHM3WOHXXSFJQ5LQRIAGDLUVWABKLC5M7XNHJA`](https://stellar.expert/explorer/testnet/contract/CCWXGLZ3J7REF2DHXINHM3WOHXXSFJQ5LQRIAGDLUVWABKLC5M7XNHJA)
+```
+stellar/
+├── contracts/                    # Soroban Smart Contracts (Rust)
+│   ├── arbitrage-bot/           # Main arbitrage execution
+│   ├── dao-governance/          # DAO governance system
+│   ├── risk-manager/            # Risk management
+│   ├── trading-strategies/      # Strategy management
+│   └── shared-types/            # Common data structures
+└── frontend/                    # Next.js Frontend
+    ├── app/                     # App router and pages
+    ├── components/              # React components
+    ├── hooks/                   # Custom hooks
+    └── bindings/                # Contract bindings
+```
 
-***
+## Installation
 
-## 📱 Application Frontend: UI Components & Function Mapping
+### Requirements
+- Node.js v18+
+- Freighter Wallet extension
+- Stellar testnet account
 
-Here’s how to translate your smart contract functions into a user-facing dApp.
+### Setup
 
-### **👤 User Dashboard & Account Management**
+```bash
+# Clone repository
+git clone https://github.com/your-username/stellar-arbitrage.git
+cd stellar
 
-This section is the user's personal hub for interacting with the arbitrage bot.
+# Install dependencies
+cd frontend
+npm install
 
-*   **UI Components**:
-    *   Wallet connection button (using Freighter).
-    *   Account summary card displaying total balance and P&L.
-    *   Deposit and Withdraw forms with input fields for token and amount.
-    *   A table or list to display personal trade history.
-    *   A settings page to configure personal trading parameters.
-*   **Contract Functions to Use (`Arbitrage Bot`):**
-    *   `initialize_user_account`: Call this once when a new user connects their wallet for the first time.
-    *   `deposit_user_funds`: Hook this to the "Deposit" button.
-    *   `withdraw_user_funds`: Hook this to the "Withdraw" button.
-    *   `get_user_balances`: Periodically call this to update the user's balance display.
-    *   `get_user_performance_metrics`: Use this to populate the P&L and other performance stats on the dashboard.
-    *   `get_user_trade_history`: Fetch and display the user's recent trades.
-    *   `update_user_config`: On the settings page, allow users to call this to adjust their personal `ArbitrageConfig`.
+# Start development server
+npm run dev
+```
 
-### **🗳️ DAO Governance Portal**
+## Usage
 
-This is the central place for community members to participate in the decision-making process.
+### User Dashboard
+1. Connect Freighter wallet
+2. Initialize trading account
+3. Deposit funds for arbitrage trading
+4. Monitor performance and withdraw profits
 
-*   **UI Components**:
-    *   A list of active, passed, and failed proposals.
-    *   A detailed view for each proposal showing its description, votes, and status.
-    *   A "Create Proposal" form.
-    *   "Vote Yes" / "Vote No" buttons on active proposals.
-    *   An "Execute Proposal" button for passed proposals (visible only after the timelock).
-    *   A staking dashboard showing total KALE staked and the user's personal stake.
-*   **Contract Functions to Use (`DAO Governance`):**
-    *   `get_all_proposals`: Fetch the list of all proposals to display on the main governance page.
-    *   `get_proposal`: Get the details for a specific proposal when a user clicks on it.
-    *   `create_proposal`: Hook this to the "Submit" button on your proposal creation form.
-    *   `vote`: Connect this to the "Vote Yes" and "Vote No" buttons.
-    *   `finalize_proposal`: Your app could have a button for this, or a backend service could call it periodically for expired proposals.
-    *   `execute_proposal`: This is a critical function to connect. The button should only be enabled if the proposal `status` is `Passed` and the current time is past `execution_earliest`.
-    *   `stake_kale` / `unstake_kale`: These are for your staking dashboard.
+### DAO Governance
+1. Stake KALE tokens
+2. Create or vote on proposals
+3. Execute approved proposals
+4. Earn governance rewards
 
-### **📈 System Analytics & Arbitrage Opportunities Dashboard**
+## Smart Contracts
 
-This public-facing dashboard provides transparency into the system's performance and current market opportunities.
+### Arbitrage Bot
+```rust
+pub fn initialize_user_account(...)     // Initialize user account
+pub fn deposit_user_funds(...)          // Deposit trading funds
+pub fn scan_advanced_opportunities(...) // Find arbitrage opportunities
+pub fn execute_enhanced_arbitrage(...)  // Execute trades
+```
 
-*   **UI Components**:
-    *   Real-time charts showing total profit, trade volume, and success rate.
-    *   A live-updating table of detected arbitrage opportunities.
-    *   A "Keeper" section where authorized users can trigger trades.
-*   **Contract Functions to Use (`Arbitrage Bot`):**
-    *   `get_performance_metrics`: Call this to get global system performance for your analytics charts.
-    *   `scan_advanced_opportunities`: This is a key function. Your frontend can call this periodically (e.g., every 30 seconds) to display potential arbitrage trades in real-time.
-    *   `execute_enhanced_arbitrage`: This function should be accessible to authorized "Keepers". In your UI, if a user's wallet address is on the keeper list, show a "Execute Trade" button next to each opportunity.
+### DAO Governance
+```rust
+pub fn create_proposal(...)    // Create governance proposals
+pub fn vote(...)              // Vote on proposals
+pub fn stake_kale(...)        // Stake governance tokens
+pub fn execute_proposal(...)  // Execute approved proposals
+```
 
-### **🛠️ Admin Panel (For the System Administrator)**
+## Development
 
-A secure, admin-only section for managing the core system.
+### Frontend Development
+```bash
+npm run dev          # Development server
+npm run build        # Production build
+npm run test         # Run tests
+```
 
-*   **UI Components**:
-    *   A form to add new keepers.
-    *   A form to add/pause trading pairs and venues.
-    *   An "Emergency Stop" button.
-    *   A "Transfer Admin" form.
-*   **Contract Functions to Use (`Arbitrage Bot`):**
-    *   `add_keeper`: For the "Add Keeper" form.
-    *   `add_enhanced_pair` / `pause_pair`: For managing trading pairs.
-    *   `emergency_stop`: A big, red button for emergencies. This call should have extra confirmations in the UI.
-    *   `transfer_admin`: A secure form to transfer ownership of the protocol.
+### Contract Development
+```bash
+# Build contracts
+cargo build --target wasm32-unknown-unknown --release
 
-***
+# Run tests
+cargo test
 
-## 🚀 Next Steps: Your Development Roadmap
+# Deploy to testnet
+stellar contract deploy --wasm target/wasm32-unknown-unknown/release/contract.wasm --network testnet
+```
 
-1.  **Phase 1: Read-Only dApp & User Onboarding**
-    *   Implement the **User Dashboard** with a focus on `get_*` functions. Allow users to connect their wallet, see their (zero) balance, and call `initialize_user_account`.
-    *   Implement the **DAO Governance Portal** in read-only mode, showing existing (if any) proposals.
-    *   Implement the **System Analytics Dashboard**, calling `scan_advanced_opportunities` to show live data.
+## Security
 
-2.  **Phase 2: Core User Interactions**
-    *   Enable the `deposit_user_funds` and `withdraw_user_funds` functions.
-    *   Allow users to `stake_kale` and `unstake_kale`.
-    *   Build out the "Create Proposal" form.
+- **Smart Contract Security**: Memory-safe Rust development with Soroban runtime
+- **Access Controls**: Role-based permissions and emergency functions
+- **Risk Management**: Automated position limits and drawdown protection
+- **Governance**: Timelock mechanisms and multi-signature controls
 
-3.  **Phase 3: Full Governance and Keeper Functionality**
-    *   Enable the `vote` and `execute_proposal` functions.
-    *   Build the admin panel for the system administrator.
-    *   Implement the "Keeper" functionality, allowing authorized users to call `execute_enhanced_arbitrage`.
+## Contributing
 
-4.  **Phase 4: Security and Production**
-    *   Conduct a thorough security audit of your frontend and smart contracts.
-    *   Optimize for performance and gas fees.
-    *   Plan and execute your Mainnet deployment.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-***
+## License
+
+This project is licensed under the MIT License.
+
+## Contact
+
+- **GitHub**: [github.com/your-username/stellar-arbitrage]
+- **Documentation**: [docs.calibrex.com]
+- **Support**: [support@calibrex.com]
