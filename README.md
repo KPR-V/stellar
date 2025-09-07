@@ -16,10 +16,10 @@ CalibreX is an automated arbitrage trading system built on Stellar's Soroban sma
 
 **Network**: Stellar Testnet
 
-- **Risk Manager**: [`CAGLHASPDWED7XBJ6VOFRUD5QRTEO4OP7WTGSRP5ENE5DGRMEAQKSEE4`](https://stellar.expert/explorer/testnet/contract/CAGLHASPDWED7XBJ6VOFRUD5QRTEO4OP7WTGSRP5ENE5DGRMEAQKSEE4)
-- **Arbitrage Bot**: [`CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE`](https://stellar.expert/explorer/testnet/contract/CCPCIIYJ4XQKVH7UGMYVITAPSJZMXIHU2F4GSDMOAUQYGZQFKUIFJPRE)
-- **DAO Governance**: [`CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3`](https://stellar.expert/explorer/testnet/contract/CDF6EDQOA75TDOGGCOA7POBK2KCMQ47J6BULFSKYOLSAK2M23AUWAUA3)
-- **Trading Strategies**: [`CCWXGLZ3J7REF2DHXINHM3WOHXXSFJQ5LQRIAGDLUVWABKLC5M7XNHJA`](https://stellar.expert/explorer/testnet/contract/CCWXGLZ3J7REF2DHXINHM3WOHXXSFJQ5LQRIAGDLUVWABKLC5M7XNHJA)
+- **Risk Manager**: [`CAEPHTXHGON6O3FLKCXCOH5DMWRF6H2RZSMEP7OWWAOBIUTKQNIR5I5U`](https://stellar.expert/explorer/testnet/contract/CAEPHTXHGON6O3FLKCXCOH5DMWRF6H2RZSMEP7OWWAOBIUTKQNIR5I5U)
+- **Arbitrage Bot**: [`CBBM4W25F6ULDAH5LEUE3PWCY5P7T7M4PEIQBORRFPTGDBSEZUGVOVJ2`](https://stellar.expert/explorer/testnet/contract/CBBM4W25F6ULDAH5LEUE3PWCY5P7T7M4PEIQBORRFPTGDBSEZUGVOVJ2)
+- **DAO Governance**: [`CDQSF6F3VNRMMB3RNFIPWNVAEXFZ7RYNITCF6RGBG5RMQ3ZQOGYEJLNO`](https://stellar.expert/explorer/testnet/contract/CDQSF6F3VNRMMB3RNFIPWNVAEXFZ7RYNITCF6RGBG5RMQ3ZQOGYEJLNO)
+- **Trading Strategies**: [`CDEMHH2IQZ5IASPOQ522T4RLNH4YVZKZMMBQD2TKXX4O3BQI2DHHUYN4`](https://stellar.expert/explorer/testnet/contract/CDEMHH2IQZ5IASPOQ522T4RLNH4YVZKZMMBQD2TKXX4O3BQI2DHHUYN4)
 
 ## Project Structure
 
@@ -49,7 +49,7 @@ stellar/
 
 ```bash
 # Clone repository
-git clone https://github.com/your-username/stellar-arbitrage.git
+git clone https://github.com/KPR-V/stellar.git
 cd stellar
 
 # Install dependencies
@@ -105,12 +105,8 @@ npm run test         # Run tests
 ```bash
 # Build contracts
 cargo build --target wasm32-unknown-unknown --release
-
-# Run tests
-cargo test
-
-# Deploy to testnet
-stellar contract deploy --wasm target/wasm32-unknown-unknown/release/contract.wasm --network testnet
+#or
+stellar contract build
 ```
 
 ## Security
@@ -134,6 +130,6 @@ This project is licensed under the MIT License.
 
 ## Contact
 
-- **GitHub**: [github.com/your-username/stellar-arbitrage]
-- **Documentation**: [docs.calibrex.com]
-- **Support**: [support@calibrex.com]
+- **GitHub**: [github.com/KPR-V/stellar]
+- **Documentation**: [https://calibrex.gitbook.io/calibrex-documentation/]
+- **Contact**: [kapoorv046@gmail.com]
