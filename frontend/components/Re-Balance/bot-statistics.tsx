@@ -32,12 +32,20 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const previousTotalProfitRef = useRef<number | null>(null)
 
+  // Bot launch date - August 29, 2025
+  const BOT_LAUNCH_DATE = '2025-08-29'
+  const BOT_LAUNCH_TIMESTAMP = new Date(BOT_LAUNCH_DATE).getTime()
+
   useEffect(() => {
     const savedChartData = localStorage.getItem('bot_profit_chart_data')
     if (savedChartData) {
       try {
         const parsedData = JSON.parse(savedChartData)
-        setChartData(parsedData)
+        // Filter data to only include data from bot launch date onwards
+        const filteredData = parsedData.filter((point: ProfitDataPoint) => 
+          point.timestamp >= BOT_LAUNCH_TIMESTAMP
+        )
+        setChartData(filteredData)
       } catch (err) {
         console.error('BotStatistics: Error parsing saved chart data:', err)
       }
@@ -156,7 +164,7 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
       const newDataPoint: ProfitDataPoint = {
         date: dateString,
         profit: parseFloat(profitValue.toFixed(4)),
-        timestamp: new Date().getTime()
+        timestamp: new Date(dateString).getTime()
       }
 
       let newData: ProfitDataPoint[]
@@ -166,8 +174,10 @@ const BotStatistics: React.FC<BotStatisticsProps> = ({ className = '' }) => {
       } else {
         newData = [...prevData, newDataPoint]
           .sort((a, b) => a.timestamp - b.timestamp)
-          .slice(-30)
       }
+
+      // Only keep data from bot launch date onwards (August 29, 2025)
+      newData = newData.filter(point => point.timestamp >= BOT_LAUNCH_TIMESTAMP)
 
       localStorage.setItem('bot_profit_chart_data', JSON.stringify(newData))      
       return newData

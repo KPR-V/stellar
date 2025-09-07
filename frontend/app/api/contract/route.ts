@@ -14,7 +14,7 @@ const safeStringify = (obj: any) => {
   });
 };
 
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || 'CBNTCMYVDM7PSXU56QKYH6NG772ETOERFVHCA4SMF4JEO6VG7CXDH3AX';
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS!;
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -356,6 +356,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
     const balancesWithUsdValues: { [key: string]: { balance: string, usdValue: number, price: number } } = {};
     
     console.log('Fetching USD prices for tokens...');
+    console.log('Available balances:', balancesWithStrings);
     
     for (const [tokenAddress, balance] of Object.entries(balancesWithStrings)) {
       try {
@@ -364,6 +365,8 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         
         // Get token symbol for oracle lookup
         const tokenInfo = getTokenSymbolForOracle(tokenAddress);
+        
+        console.log(`Processing token: ${tokenAddress} -> ${tokenInfo.symbol}, balance: ${balanceValue}`);
         
         if (tokenInfo.symbol !== 'Unknown') {
           console.log(`Fetching price for ${tokenInfo.symbol} (${tokenAddress})`);
@@ -385,9 +388,25 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         console.warn(`Failed to fetch price for ${tokenAddress}:`, priceError);
         const balanceValue = parseFloat(normalizeOraclePrice(balance, 7)); // Use proper normalization
         
-        // Fallback: assume $1 for stablecoins, dynamic for others
-        let fallbackPrice = 1; // Default for USDC/EURC
-        if (tokenAddress.includes('CDLZFC3S')) fallbackPrice = 0.1; // XLM fallback
+        // Fallback prices based on token type
+        let fallbackPrice = 0;
+        const tokenInfo = getTokenSymbolForOracle(tokenAddress);
+        
+        switch (tokenInfo.symbol) {
+          case 'USDC':
+            fallbackPrice = 1.0;
+            break;
+          case 'EURC':
+            fallbackPrice = 1.1; // EUR to USD approximate rate
+            break;
+          case 'XLM':
+            fallbackPrice = 0.12; // Approximate XLM price
+            break;
+          default:
+            fallbackPrice = 1.0; // Default for unknown tokens
+        }
+        
+        console.log(`Using fallback price for ${tokenInfo.symbol}: $${fallbackPrice}`);
         
         tokenPrices[tokenAddress] = fallbackPrice;
         balancesWithUsdValues[tokenAddress] = {
@@ -400,11 +419,14 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
 
     // Calculate total portfolio value in USD
     let totalUsdValue = 0;
+    console.log('Calculating total portfolio value...');
     for (const [tokenAddress, data] of Object.entries(balancesWithUsdValues)) {
+      console.log(`Adding to portfolio: ${tokenAddress} = $${data.usdValue.toFixed(2)}`);
       totalUsdValue += data.usdValue;
     }
 
     console.log('Final calculated portfolio USD value:', totalUsdValue);
+    console.log('Balances with USD values:', balancesWithUsdValues);
 
     return NextResponse.json({
       success: true,
@@ -436,7 +458,8 @@ function getTokenSymbolForOracle(tokenAddress: string): { symbol: string, name: 
     'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': { symbol: 'XLM', name: 'Stellar Lumens' }, // Correct XLM address
     'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' }, // USDC contract address
     'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' }, // USDC issuer address
-    'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' },
+    'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' }, // EURC issuer address
+    'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ': { symbol: 'EURC', name: 'Euro Coin' }, // EURC contract address
       };
   
   return tokenMap[tokenAddress] || { symbol: 'Unknown', name: 'Unknown Token' };
@@ -747,8 +770,8 @@ async function depositUserFunds(
       // For non-native assets like USDC, we need to convert to Stellar Asset Contract (SAC) address
       try {
         // Use the provided asset code or infer from common tokens
-        let code = assetCode || 'USDC'; // Default to USDC if not specified
-        
+        let code = assetCode || 'USDC' || 'EURC'; // Default to USDC if not specified
+
         // Map known issuer addresses to asset codes
         const knownAssets: { [key: string]: string } = {
           'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',

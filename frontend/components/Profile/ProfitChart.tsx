@@ -28,6 +28,7 @@ export default function ProfitChart({ userAddress, className = "" }: ProfitChart
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [userInitDate, setUserInitDate] = useState<string | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const previousProfitRef = useRef<number | null>(null)
 
@@ -48,7 +49,43 @@ export default function ProfitChart({ userAddress, className = "" }: ProfitChart
     if (savedPreviousProfit) {
       previousProfitRef.current = parseFloat(savedPreviousProfit)
     }
+
+    // Get user initialization date
+    const savedInitDate = localStorage.getItem(`user_init_date_${userAddress}`)
+    if (savedInitDate) {
+      setUserInitDate(savedInitDate)
+    } else {
+      // Fetch initialization date from API if not cached
+      fetchUserInitDate()
+    }
   }, [userAddress])
+
+  const fetchUserInitDate = async () => {
+    if (!userAddress) return
+    
+    try {
+      const response = await fetch('/api/contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'check_user_initialized',
+          userAddress: userAddress,
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (data.success && data.data.initialized) {
+        // If we don't have the exact init date, use today as fallback
+        // In a real implementation, you'd want to store the init date when user first initializes
+        const initDate = new Date().toISOString().split('T')[0]
+        setUserInitDate(initDate)
+        localStorage.setItem(`user_init_date_${userAddress}`, initDate)
+      }
+    } catch (err) {
+      console.error('Error fetching user init date:', err)
+    }
+  }
 
   const fetchDailyProfit = async () => {
     if (!userAddress) return
@@ -98,7 +135,12 @@ export default function ProfitChart({ userAddress, className = "" }: ProfitChart
           } else {
             newData = [...prevData, newDataPoint]
               .sort((a, b) => a.timestamp - b.timestamp)
-              .slice(-30)
+          }
+
+          // Only keep data from user initialization date onwards
+          if (userInitDate) {
+            const initTimestamp = new Date(userInitDate).getTime()
+            newData = newData.filter(point => point.timestamp >= initTimestamp)
           }
 
           localStorage.setItem(`profit_chart_${userAddress}`, JSON.stringify(newData))
@@ -129,7 +171,7 @@ export default function ProfitChart({ userAddress, className = "" }: ProfitChart
         clearInterval(intervalRef.current)
       }
     }
-  }, [userAddress])
+  }, [userAddress, userInitDate])
 
   const formatProfit = (profit: number) => {
     const absProfit = Math.abs(profit)

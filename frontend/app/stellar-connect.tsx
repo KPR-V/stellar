@@ -58,6 +58,10 @@ export default function StellarConnect() {
 
         await submitSignedTransaction(signedTxXdr);
         
+        // Store user initialization date
+        const initDate = new Date().toISOString().split('T')[0]
+        localStorage.setItem(`user_init_date_${walletAddress}`, initDate)
+        
         showMessage("Account initialized successfully on blockchain!");
       } else {
         throw new Error(data.error || "Failed to prepare transaction.");

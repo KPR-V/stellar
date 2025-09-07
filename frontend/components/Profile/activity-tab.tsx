@@ -27,7 +27,7 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
     { 
       symbol: 'EURC', 
       name: 'Euro Coin', 
-      address: 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO',
+      address: 'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ',
       isNative: false
     }
   ]
