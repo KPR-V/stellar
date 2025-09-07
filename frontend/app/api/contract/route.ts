@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../bindings/src'; 
 import { Address, Networks } from '@stellar/stellar-sdk';
-import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, scValToNative, nativeToScVal, xdr,Contract, // ✅ Import Contract class
+import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, scValToNative, nativeToScVal, xdr,Contract, 
   Operation   } from '@stellar/stellar-sdk';
 
-// ✅ Helper to safely stringify objects with BigInt values
+
 const safeStringify = (obj: any) => {
   return JSON.stringify(obj, (key, value) => {
     if (typeof value === 'bigint') {
@@ -14,7 +14,7 @@ const safeStringify = (obj: any) => {
   });
 };
 
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS!;
+const CONTRACT_ADDRESS = "CBBM4W25F6ULDAH5LEUE3PWCY5P7T7M4PEIQBORRFPTGDBSEZUGVOVJ2";
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -351,7 +351,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
 
     console.log('Processed balances:', balancesWithStrings);
 
-    // ✅ Fetch USD prices for all tokens using oracle
+    
     const tokenPrices: { [key: string]: number } = {};
     const balancesWithUsdValues: { [key: string]: { balance: string, usdValue: number, price: number } } = {};
     
@@ -361,9 +361,8 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
     for (const [tokenAddress, balance] of Object.entries(balancesWithStrings)) {
       try {
         let usdPrice = 0;
-        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7)); // Use proper normalization
+        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7));
         
-        // Get token symbol for oracle lookup
         const tokenInfo = getTokenSymbolForOracle(tokenAddress);
         
         console.log(`Processing token: ${tokenAddress} -> ${tokenInfo.symbol}, balance: ${balanceValue}`);
@@ -377,7 +376,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         
         tokenPrices[tokenAddress] = usdPrice;
         balancesWithUsdValues[tokenAddress] = {
-          balance: normalizeOraclePrice(balance, 7), // Store normalized balance for display
+          balance: normalizeOraclePrice(balance, 7), 
           usdValue: usdValue,
           price: usdPrice
         };
@@ -386,9 +385,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         
       } catch (priceError) {
         console.warn(`Failed to fetch price for ${tokenAddress}:`, priceError);
-        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7)); // Use proper normalization
-        
-        // Fallback prices based on token type
+        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7));
         let fallbackPrice = 0;
         const tokenInfo = getTokenSymbolForOracle(tokenAddress);
         
@@ -397,27 +394,27 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
             fallbackPrice = 1.0;
             break;
           case 'EURC':
-            fallbackPrice = 1.1; // EUR to USD approximate rate
+            fallbackPrice = 1.1; 
             break;
           case 'XLM':
-            fallbackPrice = 0.12; // Approximate XLM price
+            fallbackPrice = 0.12;
             break;
           default:
-            fallbackPrice = 1.0; // Default for unknown tokens
+            fallbackPrice = 1.0; 
         }
         
         console.log(`Using fallback price for ${tokenInfo.symbol}: $${fallbackPrice}`);
         
         tokenPrices[tokenAddress] = fallbackPrice;
         balancesWithUsdValues[tokenAddress] = {
-          balance: normalizeOraclePrice(balance, 7), // Store normalized balance for display
+          balance: normalizeOraclePrice(balance, 7),
           usdValue: balanceValue * fallbackPrice,
           price: fallbackPrice
         };
       }
     }
 
-    // Calculate total portfolio value in USD
+    
     let totalUsdValue = 0;
     console.log('Calculating total portfolio value...');
     for (const [tokenAddress, data] of Object.entries(balancesWithUsdValues)) {
@@ -432,7 +429,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
       success: true,
       data: {
         message: 'User balances with USD prices fetched successfully!',
-        balances: balancesWithStrings, // Keep original for compatibility
+        balances: balancesWithStrings,
         balancesWithPrices: balancesWithUsdValues,
         tokenPrices: tokenPrices,
         portfolioValue: totalUsdValue.toFixed(2)
@@ -448,30 +445,30 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
   }
 }
 
-// Helper function to get token symbol for oracle lookup
+
 function getTokenSymbolForOracle(tokenAddress: string): { symbol: string, name: string } {
   const tokenMap: { [key: string]: { symbol: string, name: string } } = {
-    // Native
+    
     'native': { symbol: 'XLM', name: 'Stellar Lumens' },
     
-    // SAC addresses (updated with user's actual addresses)
-    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': { symbol: 'XLM', name: 'Stellar Lumens' }, // Correct XLM address
-    'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' }, // USDC contract address
-    'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' }, // USDC issuer address
-    'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' }, // EURC issuer address
-    'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ': { symbol: 'EURC', name: 'Euro Coin' }, // EURC contract address
+    
+    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': { symbol: 'XLM', name: 'Stellar Lumens' },
+    'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' }, 
+    'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': { symbol: 'USDC', name: 'USD Coin' }, 
+    'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': { symbol: 'EURC', name: 'Euro Coin' },
+    'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ': { symbol: 'EURC', name: 'Euro Coin' },
       };
   
   return tokenMap[tokenAddress] || { symbol: 'Unknown', name: 'Unknown Token' };
 }
 
-// Helper function to get real USD prices from Stellar reflector oracles
+
 async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
   try {
     console.log(`🔍 Fetching price from reflector oracle for ${tokenSymbol}...`);
     
     if (tokenSymbol === 'USDC') {
-      return 1.0; // USDC is pegged to $1 USD
+      return 1.0; 
     }
     
     const client = new Client({
@@ -480,13 +477,13 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
       rpcUrl: RPC_URL,
     });
 
-    // Oracle addresses from the contract constants
+    
     const CRYPTO_ORACLE = 'CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63';
     const FOREX_ORACLE = 'CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W';
     const STELLAR_ORACLE = 'CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP';
 
     if (tokenSymbol === 'XLM') {
-      // Get XLM price from crypto oracle
+      
       try {
         const result = await client.debug_test_oracle({
           oracle_address: CRYPTO_ORACLE,
@@ -500,7 +497,7 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
           const price = normalizeOraclePrice(result.result.price.toString(), 7);
           const priceNum = parseFloat(price);
           
-          if (priceNum > 0.01 && priceNum < 2.0) { // Sanity check for XLM price
+          if (priceNum > 0.01 && priceNum < 2.0) { 
             console.log(`✅ Got XLM price from crypto oracle: $${priceNum}`);
             return priceNum;
           }
@@ -509,13 +506,13 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
         console.warn('Failed to get XLM from crypto oracle:', oracleError);
       }
       
-      // Fallback to reasonable XLM price
+      
       console.log('Using fallback XLM price');
       return 0.12;
     }
     
     if (tokenSymbol === 'EURC') {
-      // Get EUR/USD rate from forex oracle
+      
       try {
         const result = await client.debug_test_oracle({
           oracle_address: FOREX_ORACLE,
@@ -529,7 +526,7 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
           const rate = normalizeOraclePrice(result.result.price.toString(), 7);
           const rateNum = parseFloat(rate);
           
-          if (rateNum > 0.8 && rateNum < 1.5) { // Sanity check for EUR/USD rate
+          if (rateNum > 0.8 && rateNum < 1.5) { 
             console.log(`✅ Got EUR/USD rate from forex oracle: $${rateNum}`);
             return rateNum;
           }
@@ -538,7 +535,7 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
         console.warn('Failed to get EUR/USD from forex oracle:', oracleError);
       }
       
-      // Fallback to reasonable EUR/USD rate
+      
       console.log('Using fallback EUR/USD rate');
       return 1.1;
     }
@@ -547,7 +544,7 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
   } catch (error) {
     console.error(`❌ Error fetching price from oracle for ${tokenSymbol}:`, error);
     
-    // Fallback to reasonable default prices
+    
     if (tokenSymbol === 'USDC') return 1.0;
     if (tokenSymbol === 'XLM') return 0.12;
     if (tokenSymbol === 'EURC') return 1.1;
@@ -555,12 +552,12 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
   }
 }
 
-// Helper function to fetch USD price - now uses reflector oracles instead of external APIs
+
 async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Promise<number> {
   try {
     console.log(`🔍 Fetching price using reflector oracles for ${tokenSymbol}...`);
     
-    // Use reflector oracles for real-time price data
+    
     const oraclePrice = await getRealUsdPrice(tokenSymbol);
     
     if (oraclePrice > 0) {
@@ -570,7 +567,7 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
     
     console.log(`⚠️ No oracle price found for ${tokenSymbol}, trying contract opportunities...`);
 
-    // Fallback to contract opportunities scan if oracle fails
+    
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -583,13 +580,13 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
 
     console.log(`Got ${opportunities.result?.length || 0} opportunities from scan`);
 
-    // Only use opportunity prices if they make sense (avoid the inflated values)
+    
     if (opportunities.result && Array.isArray(opportunities.result)) {
       for (const opp of opportunities.result) {
         if (opp.base_opportunity?.pair) {
           const pair = opp.base_opportunity.pair;
           
-          // Check if this opportunity has the token we're looking for
+          
           let priceData: { price: string, symbol: string } | null = null;
           
           if (pair.base_asset_symbol === tokenSymbol) {
@@ -607,7 +604,7 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
           
           if (priceData) {
             const normalizedPrice = parseFloat(normalizeOraclePrice(priceData.price, 7));
-            // Only use opportunity price if it's reasonable (not inflated)
+            
             if (tokenSymbol === 'XLM' && normalizedPrice > 0.01 && normalizedPrice < 2.0) {
               console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
               return normalizedPrice;

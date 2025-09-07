@@ -115,19 +115,19 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
       setError('Please connect your wallet first')
       return
     }
-
+  
     if (!form.title.trim() || !form.description.trim()) {
       setError('Title and description are required')
       return
     }
-
+  
     setCreating(true)
     setError(null)
     setSuccess(null)
-
+  
     try {
       console.log('🚀 Creating proposal with data:', form)
-
+  
       const response = await fetch('/api/dao', {
         method: 'POST',
         headers: {
@@ -135,37 +135,122 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
         },
         body: JSON.stringify({
           action: 'create_proposal',
-          data: {
-            proposer: address,
-            proposal_type: form.proposal_type,
-            title: form.title,
-            description: form.description,
-            proposal_data: form
-          }
+       
+          proposer: address,
+          proposal_type: form.proposal_type,
+          title: form.title.trim(),
+          description: form.description.trim(),
+          proposal_data: getStructuredProposalData(form.proposal_type, form)
         }),
       })
-
+  
       const result = await response.json()
       console.log('📋 API Response:', result)
-
-      if (result.success) {
-        setSuccess(`Proposal "${form.title}" created successfully! Transaction: ${result.hash?.slice(0, 16)}...`)
+  
+      if (!result.success) {
+        setError(result.error || 'Failed to prepare proposal transaction')
+        return
+      }
+  
+    
+      console.log('✍️ Signing transaction with wallet...')
+      const signedXdr = await walletKit.signTransaction(result.data.transactionXdr)
+      
+    
+      console.log('📤 Submitting signed transaction...')
+      const submitResponse = await fetch('/api/dao', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'submit',
+          signedXdr: signedXdr
+        }),
+      })
+  
+      const submitResult = await submitResponse.json()
+      console.log('✅ Submit result:', submitResult)
+  
+      if (submitResult.success) {
+        setSuccess(`Proposal "${form.title}" created successfully! Transaction: ${submitResult.data.hash?.slice(0, 16)}...`)
         resetForm()
         if (onProposalCreated) {
           onProposalCreated()
         }
-        // Close modal after successful creation
         setTimeout(() => {
           onClose()
         }, 2000)
       } else {
-        setError(result.error || 'Failed to create proposal')
+        setError(submitResult.error || 'Failed to submit proposal transaction')
       }
+  
     } catch (err) {
       console.error('Create proposal error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to create proposal')
+      if (err instanceof Error && err.message.includes('stake')) {
+        setError('You need to stake KALE tokens before creating proposals')
+        onRequireStake()
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to create proposal')
+      }
     } finally {
       setCreating(false)
+    }
+  }
+  
+  // ✅ Add the getStructuredProposalData function
+  const getStructuredProposalData = (proposalType: string, formData: any) => {
+    switch (proposalType) {
+      case 'UpdateConfig':
+        return {
+          config_data: {
+            enabled: formData.arbitrage_config_data.enabled === 'true',
+            min_profit_bps: Number(formData.arbitrage_config_data.min_profit_bps) || 50,
+            max_trade_size: formData.arbitrage_config_data.max_trade_size || '1000000000000',
+            slippage_tolerance_bps: Number(formData.arbitrage_config_data.slippage_tolerance_bps) || 100,
+            max_gas_price: formData.arbitrage_config_data.max_gas_price || '2000',
+            min_liquidity: formData.arbitrage_config_data.min_liquidity || '1000000000',
+          }
+        }
+      
+      case 'AddTradingPair':
+        return {
+          pair_data: {
+            base_asset_address: formData.trading_pair_data.base_asset_address,
+            quote_asset_address: formData.trading_pair_data.quote_asset_address,
+            base_asset_symbol: formData.trading_pair_data.base_asset_symbol,
+            quote_asset_symbol: formData.trading_pair_data.quote_asset_symbol,
+            target_peg: formData.trading_pair_data.target_peg || '10000',
+            deviation_threshold_bps: Number(formData.trading_pair_data.max_spread_bps) || 50,
+            enabled: formData.trading_pair_data.enabled === 'true',
+          }
+        }
+      
+      case 'AddTradingVenue':
+        return {
+          venue_data: {
+            name: formData.trading_venue_data.name,
+            address: formData.trading_venue_data.venue_address,
+            fee_bps: Number(formData.trading_venue_data.fee_bps) || 30,
+            enabled: formData.trading_venue_data.enabled === 'true',
+            liquidity_threshold: '1000000000',
+          }
+        }
+      
+      case 'PausePair':
+        return {
+          symbol_data: formData.symbol_data.symbol
+        }
+      
+      case 'TransferAdmin':
+        return {
+          admin_address: formData.admin_data.new_admin
+        }
+      
+      case 'UpdateRiskManager':
+      case 'EmergencyStop':
+      default:
+        return {}
     }
   }
 

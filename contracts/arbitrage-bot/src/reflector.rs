@@ -40,7 +40,7 @@ pub trait Contract {
     fn admin(e: Env) -> Option<Address>;
 }
 
-// Quoted asset definition
+
 #[contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Asset {
@@ -48,7 +48,7 @@ pub enum Asset {
     Other(Symbol),
 }
 
-// Price record definition
+
 #[contracttype(export = false)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct PriceData {

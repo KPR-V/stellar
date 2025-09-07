@@ -3,7 +3,7 @@ import { Client, networks, Proposal, ProposalData, ProposalType, ProposalStatus 
 import { SorobanRpc, TransactionBuilder, scValToNative } from '@stellar/stellar-sdk'
 
 const RPC_URL = 'https://soroban-testnet.stellar.org'
-const DAO_CONTRACT = "CBZDLZAJZS6AADJ4SU32ZDZM4TBGNH7FRFQWZCWIY64ILZUCL4DJWWZ5"
+const DAO_CONTRACT = "CDQSF6F3VNRMMB3RNFIPWNVAEXFZ7RYNITCF6RGBG5RMQ3ZQOGYEJLNO"
 const NETWORK_PASSPHRASE = networks.testnet.networkPassphrase
 
 // ✅ Define proper types for simulation results
@@ -127,27 +127,26 @@ function parseScvValue(scv: any): any {
 }
 
 // ✅ Updated formatProposal to handle the correct Proposal type from bindings
-function formatProposal(proposalData: Proposal): any {
-  console.log('Formatting proposal with correct type:', proposalData)
-  
+function formatProposal(proposalData: any): any {
   return {
-    id: Number(proposalData.id),
-    proposer: proposalData.proposer,
-    proposal_type: proposalData.proposal_type.tag || proposalData.proposal_type,
-    title: proposalData.title,
-    description: proposalData.description,
-    target_contract: proposalData.target_contract,
-    created_at: Number(proposalData.created_at),
-    voting_ends_at: Number(proposalData.voting_ends_at),
-    execution_earliest: Number(proposalData.execution_earliest),
-    yes_votes: proposalData.yes_votes.toString(),
-    no_votes: proposalData.no_votes.toString(),
-    status: proposalData.status.tag || proposalData.status,
-    quorum_required: proposalData.quorum_required.toString(),
+    id: Number(proposalData.id || 0),
+    proposer: proposalData.proposer || '',
+    proposal_type: proposalData.proposal_type?.tag || proposalData.proposal_type || '',
+    title: proposalData.title || '',
+    description: proposalData.description || '',
+    target_contract: proposalData.target_contract || '',
+    created_at: Number(proposalData.created_at || 0),
+    voting_ends_at: Number(proposalData.voting_ends_at || 0),
+    execution_earliest: Number(proposalData.execution_earliest || 0),
+    yes_votes: String(proposalData.yes_votes || '0'),
+    no_votes: String(proposalData.no_votes || '0'),
+    status: proposalData.status?.tag || proposalData.status || 'Active',
+    quorum_required: String(proposalData.quorum_required || '0'),
     executed_at: proposalData.executed_at ? Number(proposalData.executed_at) : null,
     cancelled_at: proposalData.cancelled_at ? Number(proposalData.cancelled_at) : null,
   }
 }
+
 
 // Keep all your existing helper functions unchanged...
 function sanitizeForJson(obj: any): any {
@@ -354,6 +353,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return await getActiveProposals()
       case 'get_all_proposals':
         return await getAllProposals()
+      case 'get_proposal_count':
+        return await getProposalCount()
+      case 'get_proposals_paginated':
+        return await getProposalsPaginated(body)
       case 'get_proposal':
         return await getProposal(body)
       case 'create_proposal':
@@ -443,55 +446,100 @@ async function debugContractFunctions(): Promise<NextResponse> {
 // ✅ Updated getActiveProposals to handle the actual contract response
 async function getActiveProposals(): Promise<NextResponse> {
   try {
-    console.log('Fetching active proposals - debug mode...')
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
+    })
+
+    const result = await client.get_active_proposals({ simulate: true })
     
-    // First debug what the contract actually returns
-    const debugResponse = await debugContractFunctions()
-    const debugData = await debugResponse.json()
-    
-    if (debugData.success) {
-      console.log('📋 Contract returns configuration data, not proposals')
-      console.log('This means the deployed contract is different from the source code')
-      
-      // For now, return empty proposals until we fix the contract deployment
-      return NextResponse.json({ 
-        success: true, 
-        proposals: [],
-        message: 'Contract deployed does not match source code - returns config instead of proposals'
-      })
+    if (result.result && Array.isArray(result.result)) {
+      const proposals = result.result.map(formatProposal)
+      return NextResponse.json({ success: true, proposals })
     }
-
-    return debugResponse
-
+    
+    return NextResponse.json({ success: true, proposals: [] })
   } catch (error) {
-    console.error('❌ Error in getActiveProposals:', error)
+    console.error('Error fetching active proposals:', error)
     return NextResponse.json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to fetch active proposals' 
     }, { status: 500 })
   }
 }
-// ✅ Updated getAllProposals to handle contract mismatch
+
 async function getAllProposals(): Promise<NextResponse> {
   try {
-    console.log('Fetching all proposals - debug mode...')
-    
-    // Since the contract is returning config data instead of proposals,
-    // we need to acknowledge this and return appropriate response
-    console.log('📋 Contract deployment mismatch detected')
-    console.log('The deployed contract returns configuration data instead of proposal arrays')
-    
-    return NextResponse.json({ 
-      success: true, 
-      proposals: [],
-      message: 'Contract deployed does not match source code - needs redeployment with correct DAO contract'
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
     })
 
+    const result = await client.get_all_proposals({ simulate: true })
+    console.log(result.result)
+    if (result.result && Array.isArray(result.result)) {
+      const proposals = result.result.map(formatProposal)
+      return NextResponse.json({ success: true, proposals })
+    }
+    
+    return NextResponse.json({ success: true, proposals: [] })
   } catch (error) {
-    console.error('❌ Error in getAllProposals:', error)
+    console.error('Error fetching all proposals:', error)
     return NextResponse.json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to fetch all proposals' 
+    }, { status: 500 })
+  }
+}
+
+async function getProposalCount(): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
+    })
+
+    const result = await client.get_proposal_count({ simulate: true })
+    const count = Number(result.result || 0)
+    
+    return NextResponse.json({ success: true, data: { count } })
+  } catch (error) {
+    console.error('Error fetching proposal count:', error)
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to fetch proposal count' 
+    }, { status: 500 })
+  }
+}
+
+async function getProposalsPaginated(params: any): Promise<NextResponse> {
+  const { start = 0, limit = 10 } = params
+  try {
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
+    })
+
+    const result = await client.get_proposals_paginated({
+      start: BigInt(start),
+      limit: Number(limit)
+    }, { simulate: true })
+    
+    if (result.result && Array.isArray(result.result)) {
+      const proposals = result.result.map(formatProposal)
+      return NextResponse.json({ success: true, proposals, pagination: { start, limit } })
+    }
+    
+    return NextResponse.json({ success: true, proposals: [], pagination: { start, limit } })
+  } catch (error) {
+    console.error('Error fetching paginated proposals:', error)
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to fetch paginated proposals' 
     }, { status: 500 })
   }
 }
@@ -1049,16 +1097,63 @@ async function getUserVote(params: any): Promise<NextResponse> {
 }
 
 async function submitSigned(params: any): Promise<NextResponse> {
-  const { signedXdr } = params
+  let { signedXdr } = params
+  
+
   if (!signedXdr) {
     return NextResponse.json({ success: false, error: 'signedXdr is required' }, { status: 400 })
   }
   
+
+  if (typeof signedXdr === 'object' && signedXdr.signedTxXdr) {
+    console.log('📦 Extracting XDR from wallet object format')
+    signedXdr = signedXdr.signedTxXdr
+  }
+  
+
+  if (typeof signedXdr !== 'string') {
+    console.error('❌ Invalid XDR format:', typeof signedXdr, signedXdr)
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Invalid XDR format - expected string, received ' + typeof signedXdr,
+      details: { receivedType: typeof signedXdr }
+    }, { status: 400 })
+  }
+  
+  console.log('📝 Processing signed XDR:', {
+    length: signedXdr.length,
+    starts_with: signedXdr.substring(0, 20),
+    type: typeof signedXdr
+  })
+  
   try {
     const server = new SorobanRpc.Server(RPC_URL, { allowHttp: true })
-    const transaction = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE)
+    
+  
+    let transaction: any
+    
+    try {
+      transaction = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE)
+      console.log('✅ Successfully parsed XDR as TransactionEnvelope')
+    } catch (parseError) {
+      console.error('❌ Failed to parse XDR:', parseError)
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Failed to parse signed transaction XDR',
+        details: {
+          parseError: parseError instanceof Error ? parseError.message : String(parseError),
+          xdrLength: signedXdr.length,
+          suggestion: 'Ensure wallet is signing transaction correctly'
+        }
+      }, { status: 400 })
+    }
     
     console.log('🚀 Submitting transaction with hash:', transaction.hash().toString('hex'))
+    console.log('📊 Transaction details:', {
+      source: transaction.source,
+      fee: transaction.fee,
+      operationsCount: transaction.operations.length
+    })
     
     const sendResponse = await server.sendTransaction(transaction)
     
@@ -1078,19 +1173,23 @@ async function submitSigned(params: any): Promise<NextResponse> {
         latestLedger: sendResponse.latestLedger
       }
       
-      try {
-        const txDetails = await server.getTransaction(sendResponse.hash)
-        console.error('📊 Detailed transaction result:', txDetails)
-        
-        if (txDetails.status === 'FAILED') {
-          errorDetails.failureReason = 'Contract execution failed'
-          if (txDetails.resultMetaXdr) {
-            errorDetails.hasResultMeta = true
-            errorMessage = 'Contract execution failed. Check stake requirements and proposal data.'
+    
+      if (sendResponse.errorResult) {
+        try {
+          const errorResult = sendResponse.errorResult
+          console.error('📊 Detailed error result:', errorResult)
+          
+       
+          if (errorResult.result?.name === 'txFailed') {
+            const opResults = errorResult.result().results()
+            if (opResults && opResults.length > 0) {
+              errorMessage = 'Contract execution failed - check stake requirements and proposal data'
+              errorDetails.contractError = 'Contract function execution failed'
+            }
           }
+        } catch (parseError) {
+          console.error('Failed to parse error result:', parseError)
         }
-      } catch (detailError) {
-        console.error('Failed to get transaction details:', detailError)
       }
       
       return NextResponse.json({ 
@@ -1098,10 +1197,10 @@ async function submitSigned(params: any): Promise<NextResponse> {
         error: errorMessage,
         details: errorDetails,
         troubleshooting: [
-          'Check if you have sufficient stake for proposal creation',
+          'Check if you have sufficient KALE stake for proposal creation',
           'Verify proposal data format matches contract requirements',
-          'Ensure DAO contract is properly initialized',
-          'Try with simpler proposal parameters first'
+          'Ensure DAO contract is properly initialized and deployed correctly',
+          'Check if wallet has sufficient XLM for transaction fees'
         ]
       }, { status: 500 })
     }
@@ -1109,24 +1208,24 @@ async function submitSigned(params: any): Promise<NextResponse> {
     if (sendResponse.status === 'PENDING') {
       console.log('⏳ Transaction pending, monitoring for completion...')
       let attempts = 0
-      const maxAttempts = 60
+      const maxAttempts = 30
       
       while (attempts < maxAttempts) {
         try {
+          await new Promise(resolve => setTimeout(resolve, 2000))
           const getResponse = await server.getTransaction(sendResponse.hash)
           
           if (getResponse.status === 'SUCCESS') {
             console.log('✅ Transaction successful:', {
               hash: sendResponse.hash,
-              ledger: getResponse.ledger,
-              result: getResponse.returnValue
+              ledger: getResponse.ledger
             })
             return NextResponse.json({ 
               success: true, 
               data: { 
                 hash: sendResponse.hash, 
                 status: 'SUCCESS',
-                result: 'Transaction completed successfully',
+                result: 'Proposal created successfully',
                 ledger: getResponse.ledger
               } 
             })
@@ -1139,7 +1238,6 @@ async function submitSigned(params: any): Promise<NextResponse> {
             }, { status: 500 })
           }
           
-          await new Promise(resolve => setTimeout(resolve, 2000))
           attempts++
         } catch (error) {
           if (attempts === maxAttempts - 1) {
@@ -1153,7 +1251,6 @@ async function submitSigned(params: any): Promise<NextResponse> {
               } 
             })
           }
-          await new Promise(resolve => setTimeout(resolve, 2000))
           attempts++
         }
       }
@@ -1171,9 +1268,25 @@ async function submitSigned(params: any): Promise<NextResponse> {
     
   } catch (error) {
     console.error('Submit transaction error:', error)
+    
+    let errorMessage = 'Failed to submit transaction'
+    
+    if (error instanceof Error) {
+      if (error.message.includes('insufficient')) {
+        errorMessage = 'Insufficient balance for transaction fees'
+      } else if (error.message.includes('bad_auth')) {
+        errorMessage = 'Authentication failed - check wallet connection'
+      } else {
+        errorMessage = error.message
+      }
+    }
+    
     return NextResponse.json({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'Failed to submit transaction' 
+      error: errorMessage,
+      details: error instanceof Error ? error.stack : String(error)
     })
   }
 }
+
+

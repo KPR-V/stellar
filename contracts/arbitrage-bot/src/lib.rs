@@ -1,7 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Map, String, Symbol, Vec, vec};
-
+use soroban_sdk::{contract, contractimpl, vec, Address, Env, Map, String, Symbol, Vec};
 
 pub mod dex;
 pub mod reflector;
@@ -10,7 +9,7 @@ pub use dex::{
     calculate_slippage_bps,
     estimate_gas_cost,
     simulate_trade,
-    StellarDEXClient, // ✅ FIXED: Now properly exported
+    StellarDEXClient, 
     SwapResult,
 };
 pub use shared_types::*;
@@ -23,9 +22,6 @@ pub trait RiskManagerContract {
     fn check_trade_risk(env: Env, trade_size: i128) -> Symbol;
     fn update_daily_volume(env: Env, caller: Address, volume_delta: i128);
 }
-
-
-
 
 const STELLAR_ORACLE_TESTNET: &str = "CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP";
 const FOREX_ORACLE_TESTNET: &str = "CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W";
@@ -164,70 +160,67 @@ impl ArbitrageBot {
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-    
-        // ✅ DEFENSIVE MAP HANDLING
+
+     
         let mut balances = if profile.balances.len() == 0 {
-            Map::new(&env) // Re-initialize if empty/corrupted
+            Map::new(&env) 
         } else {
-            profile.balances.clone() // Clone to avoid memory reference issues
+            profile.balances.clone()
         };
-    
+
         let current_balance = balances.get(token_address.clone()).unwrap_or(0);
         balances.set(token_address.clone(), current_balance + amount);
-    
-        // ✅ ALWAYS REASSIGN MODIFIED MAP
+
+       
         profile.balances = balances;
         env.storage().persistent().set(&profile_key, &profile);
-    
+
         let token_client = TokenClient::new(&env, &token_address);
-        // ✅ FIXED: Direct values, correct parameter order
+   
         token_client.transfer(&user, &env.current_contract_address(), &amount);
-    
+
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "deposit")),
             (user, token_address, amount),
         );
     }
-    
 
     pub fn withdraw_user_funds(env: Env, user: Address, token_address: Address, amount: i128) {
         user.require_auth();
-    
+
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
             .storage()
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-    
-        // ✅ DEFENSIVE MAP HANDLING
+
+  
         let mut balances = if profile.balances.len() == 0 {
             Map::new(&env)
         } else {
             profile.balances.clone()
         };
-    
+
         let current_balance = balances.get(token_address.clone()).unwrap_or(0);
         if current_balance < amount {
             panic!("Insufficient balance");
         }
-    
+
         balances.set(token_address.clone(), current_balance - amount);
-        
-        // ✅ ALWAYS REASSIGN MODIFIED MAP
+
         profile.balances = balances;
         env.storage().persistent().set(&profile_key, &profile);
-    
+
         let token_client = TokenClient::new(&env, &token_address);
-        // ✅ FIXED: Direct values, correct parameter order
+      
         token_client.transfer(&env.current_contract_address(), &user, &amount);
-    
+
         env.events().publish(
             (Symbol::new(&env, "user"), Symbol::new(&env, "withdrawal")),
             (user, token_address, amount),
         );
     }
-    
 
     pub fn execute_user_arbitrage(
         env: Env,
@@ -237,67 +230,67 @@ impl ArbitrageBot {
         venue_address: Address,
     ) -> TradeExecution {
         user.require_auth();
-    
+
         let profile_key = UserStorageKey::Profile(user.clone());
         let mut profile: UserProfile = env
             .storage()
             .persistent()
             .get(&profile_key)
             .expect("User not initialized");
-    
+
         if !profile.is_active {
             return Self::create_failed_execution(&env, &opportunity, "USER_INACTIVE");
         }
-    
+
         if trade_amount > profile.risk_limits.max_position_size {
             return Self::create_failed_execution(&env, &opportunity, "USER_POSITION_TOO_LARGE");
         }
-    
-        // ✅ DEFENSIVE MAP HANDLING
+
+       
         let mut balances = if profile.balances.len() == 0 {
             Map::new(&env)
         } else {
             profile.balances.clone()
         };
-    
+
         let token = if opportunity.base_opportunity.trade_direction == Symbol::new(&env, "BUY") {
             &opportunity.base_opportunity.pair.quote_asset_address
         } else {
             &opportunity.base_opportunity.pair.base_asset_address
         };
-    
+
         let user_balance = balances.get(token.clone()).unwrap_or(0);
         if user_balance < trade_amount {
             return Self::create_failed_execution(&env, &opportunity, "INSUFFICIENT_USER_BALANCE");
         }
-    
+
         let history_key = UserStorageKey::TradeHistory(user.clone());
         let history: UserTradeHistory = env.storage().persistent().get(&history_key).unwrap();
-    
+
         if history.daily_volume + trade_amount > profile.risk_limits.max_daily_volume {
             return Self::create_failed_execution(&env, &opportunity, "USER_DAILY_LIMIT_EXCEEDED");
         }
-    
+
         if !profile.trading_config.enabled {
             return Self::create_failed_execution(&env, &opportunity, "USER_BOT_DISABLED");
         }
-    
-        // ✅ SAFE BALANCE DEDUCTION
+
+      
         balances.set(token.clone(), user_balance - trade_amount);
-        profile.balances = balances.clone(); // Assign back before saving
+        profile.balances = balances.clone(); 
         env.storage().persistent().set(&profile_key, &profile);
-    
+
         let simulation_result =
             Self::simulate_arbitrage_trade(&env, &opportunity, trade_amount, &venue_address);
-    
+
         if let Some(sim) = simulation_result {
             let slippage_bps = calculate_slippage_bps(
                 opportunity.base_opportunity.estimated_profit,
                 sim.amount_out - trade_amount,
             );
-    
+
             if slippage_bps > profile.trading_config.slippage_tolerance_bps {
-                // ✅ SAFE REFUND WITH DEFENSIVE PATTERN
+                
                 let mut refund_balances = balances.clone();
                 let current_balance = refund_balances.get(token.clone()).unwrap_or(0);
                 refund_balances.set(token.clone(), current_balance + trade_amount);
@@ -306,29 +299,28 @@ impl ArbitrageBot {
                 return Self::create_failed_execution(&env, &opportunity, "USER_SLIPPAGE_TOO_HIGH");
             }
         }
-    
+
         let execution =
             Self::execute_contract_trade(&env, &user, &opportunity, trade_amount, &venue_address);
-    
-        // ✅ SAFE BALANCE UPDATE AFTER TRADE
+
+       
         let mut final_balances = balances.clone();
         if execution.status == Symbol::new(&env, "SUCCESS") {
             let current_balance = final_balances.get(token.clone()).unwrap_or(0);
             final_balances.set(token.clone(), current_balance + execution.actual_profit);
             profile.total_profit_loss += execution.actual_profit;
         } else {
-            // Refund on failed trade
+          
             let current_balance = final_balances.get(token.clone()).unwrap_or(0);
             final_balances.set(token.clone(), current_balance + trade_amount);
         }
-    
+
         profile.balances = final_balances;
         env.storage().persistent().set(&profile_key, &profile);
         Self::update_user_trade_history(&env, &user, &execution);
-    
+
         execution
     }
-    
 
     pub fn get_user_performance_metrics(env: Env, user: Address, days: u32) -> PerformanceMetrics {
         let history_key = UserStorageKey::TradeHistory(user);
@@ -356,7 +348,7 @@ impl ArbitrageBot {
             .persistent()
             .get::<UserStorageKey, UserProfile>(&profile_key)
         {
-            // ✅ DEFENSIVE RETURN
+           
             if profile.balances.len() == 0 {
                 Map::new(&env)
             } else {
@@ -366,7 +358,6 @@ impl ArbitrageBot {
             Map::new(&env)
         }
     }
-    
 
     pub fn get_user_config(env: Env, user: Address) -> ArbitrageConfig {
         let profile_key = UserStorageKey::Profile(user);
@@ -377,7 +368,7 @@ impl ArbitrageBot {
         {
             profile.trading_config
         } else {
-            // Return default config for uninitialized users
+          
             ArbitrageConfig {
                 enabled: false,
                 min_profit_bps: 50,
@@ -853,7 +844,10 @@ impl ArbitrageBot {
         stellar_oracle: &Address,
     ) -> Option<EnhancedArbitrageOpportunity> {
         env.events().publish(
-            (Symbol::new(env, "arbitrage"), Symbol::new(env, "checking_pair")),
+            (
+                Symbol::new(env, "arbitrage"),
+                Symbol::new(env, "checking_pair"),
+            ),
             (
                 pair.base.base_asset_symbol.clone(),
                 pair.base.quote_asset_symbol.clone(),
@@ -877,7 +871,7 @@ impl ArbitrageBot {
         env.events().publish(
             (
                 Symbol::new(env, "arbitrage"),
-                Symbol::new(env, "fetching_base_price"),       // ✅ Clear for any pair type
+                Symbol::new(env, "fetching_base_price"), 
             ),
             (pair.base.base_asset_symbol.clone(),),
         );
@@ -901,7 +895,7 @@ impl ArbitrageBot {
         env.events().publish(
             (
                 Symbol::new(env, "arbitrage"),
-                Symbol::new(env, "fetching_quote_price"),      // ✅ Clear for any pair type
+                Symbol::new(env, "fetching_quote_price"), 
             ),
             (pair.base.quote_asset_symbol.clone(),),
         );
@@ -946,7 +940,7 @@ impl ArbitrageBot {
                 (deviation_bps,),
             );
 
-            // Continue with opportunity creation...
+            
             let trade_direction = if stablecoin_price.price > expected_price {
                 Symbol::new(env, "SELL")
             } else {
@@ -970,7 +964,7 @@ impl ArbitrageBot {
                     trade_direction,
                     timestamp: env.ledger().timestamp(),
                 },
-                twap_price: None, // Simplified for debugging
+                twap_price: None, 
                 confidence_score: 8500,
                 max_trade_size: pair.risk_config.max_position_size,
                 venue_recommendations: Vec::new(env),
@@ -997,37 +991,49 @@ impl ArbitrageBot {
         fallback_oracle: &Address,
     ) -> Option<PriceData> {
         env.events().publish(
-            (Symbol::new(env, "debug"), Symbol::new(env, "price_fetch_start")),
+            (
+                Symbol::new(env, "debug"),
+                Symbol::new(env, "price_fetch_start"),
+            ),
             (symbol.clone(), sources.len()),
         );
-    
+
         let current_time = env.ledger().timestamp();
         let max_age = 600;
-    
+
         for (index, source) in sources.iter().enumerate() {
-            // FIX: Use explicit oracle address from source instead of routing logic
+           
             let oracle_addr = if let Some(addr) = &source.address {
                 addr
             } else {
-                // Fallback to type-based routing only if no explicit address
+               
                 match source.oracle_type {
                     OracleType::Forex => primary_oracle,
-                    OracleType::Crypto => &Address::from_string(&String::from_str(env, "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63")), // Force crypto oracle
+                    OracleType::Crypto => &Address::from_string(&String::from_str(
+                        env,
+                        "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
+                    )),
                     OracleType::Stellar => fallback_oracle,
                 }
             };
-    
+
             env.events().publish(
                 (Symbol::new(env, "debug"), Symbol::new(env, "trying_oracle")),
-                (index as u32, oracle_addr.clone(), source.oracle_type.clone()),
+                (
+                    index as u32,
+                    oracle_addr.clone(),
+                    source.oracle_type.clone(),
+                ),
             );
-    
+
             let client = ReflectorClient::new(env, oracle_addr);
-            
-            // FIX: Try different asset formats for crypto assets
+
+           
             let asset = if source.oracle_type == OracleType::Crypto {
-                // Try multiple asset formats for crypto assets
-                if let Some(price_data) = Self::try_crypto_asset_formats(env, &client, symbol, current_time, max_age) {
+               
+                if let Some(price_data) =
+                    Self::try_crypto_asset_formats(env, &client, symbol, current_time, max_age)
+                {
                     return Some(price_data);
                 }
                 continue;
@@ -1037,16 +1043,22 @@ impl ArbitrageBot {
                     AssetType::Address => Asset::Stellar(source.address.clone().unwrap()),
                 }
             };
-    
+
             if let Some(price_data) = client.lastprice(&asset) {
                 env.events().publish(
-                    (Symbol::new(env, "debug"), Symbol::new(env, "oracle_response")),
+                    (
+                        Symbol::new(env, "debug"),
+                        Symbol::new(env, "oracle_response"),
+                    ),
                     (price_data.price, price_data.timestamp),
                 );
-    
+
                 if check_price_freshness(&price_data, current_time, max_age) {
                     env.events().publish(
-                        (Symbol::new(env, "debug"), Symbol::new(env, "price_accepted")),
+                        (
+                            Symbol::new(env, "debug"),
+                            Symbol::new(env, "price_accepted"),
+                        ),
                         (price_data.price,),
                     );
                     return Some(price_data);
@@ -1058,131 +1070,139 @@ impl ArbitrageBot {
                 );
             }
         }
-    
+
         None
     }
-    // NEW: Helper function to create crypto-to-crypto pairs
-pub fn add_crypto_to_crypto_pair(
-    env: Env,
-    caller: Address,
-    base_crypto: Symbol,        // e.g., "USDC"
-    quote_crypto: Symbol,       // e.g., "XLM"
-    base_address: Address,      // Token contract address for base
-    quote_address: Address,     // Token contract address for quote
-    deviation_threshold: u32,   // e.g., 50 bps
-) {
-    caller.require_auth();
-    Self::require_admin(&env, &caller);
+  
+    pub fn add_crypto_to_crypto_pair(
+        env: Env,
+        caller: Address,
+        base_crypto: Symbol,     
+        quote_crypto: Symbol,     
+        base_address: Address,    
+        quote_address: Address,
+        deviation_threshold: u32, 
+    ) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
 
-    let crypto_oracle = Address::from_string(&String::from_str(&env, "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63"));
+        let crypto_oracle = Address::from_string(&String::from_str(
+            &env,
+            "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
+        ));
 
-    let pair = EnhancedStablecoinPair {
-        base: StablecoinPair {
-            base_asset_address: base_address,           // ✅ Now correct
-            quote_asset_address: quote_address,         // ✅ Now correct
-            base_asset_symbol: base_crypto.clone(),     // ✅ Now correct
-            quote_asset_symbol: quote_crypto.clone(),   // ✅ Now correct
-            target_peg: 10000,
-            deviation_threshold_bps: deviation_threshold,
-        },
-        enabled: true,
-        fee_config: FeeConfiguration {
-            bridge_fee_bps: 0,
-            gas_fee_bps: 10,
-            keeper_fee_bps: 0,
-            trading_fee_bps: 30,
-        },
-        price_sources: PriceSources {
-            fallback_enabled: true,
-            fiat_sources: Vec::from_array(&env, [
-                OracleSource {
-                    address: Some(crypto_oracle.clone()),
-                    asset_type: AssetType::Symbol,
-                    max_age_seconds: 3600,
-                    oracle_type: OracleType::Crypto,
-                    priority: 1,
-                }
-            ]),
-            min_sources_required: 1,
-            stablecoin_sources: Vec::from_array(&env, [
-                OracleSource {
-                    address: Some(crypto_oracle.clone()),
-                    asset_type: AssetType::Symbol,
-                    max_age_seconds: 3600,
-                    oracle_type: OracleType::Crypto,
-                    priority: 1,
-                }
-            ]),
-        },
-        risk_config: RiskConfiguration {
-            correlation_limit: 50000000000,
-            max_daily_volume: 100000000000,
-            max_position_size: 50000000000,
-            volatility_threshold_bps: 10000,
-        },
-        twap_config: TWAPConfiguration {
-            enabled: false,
-            min_deviation_bps: 50,
-            periods: 1,
-        },
-    };
+        let pair = EnhancedStablecoinPair {
+            base: StablecoinPair {
+                base_asset_address: base_address,         
+                quote_asset_address: quote_address,       
+                base_asset_symbol: base_crypto.clone(),   
+                quote_asset_symbol: quote_crypto.clone(), 
+                target_peg: 10000,
+                deviation_threshold_bps: deviation_threshold,
+            },
+            enabled: true,
+            fee_config: FeeConfiguration {
+                bridge_fee_bps: 0,
+                gas_fee_bps: 10,
+                keeper_fee_bps: 0,
+                trading_fee_bps: 30,
+            },
+            price_sources: PriceSources {
+                fallback_enabled: true,
+                fiat_sources: Vec::from_array(
+                    &env,
+                    [OracleSource {
+                        address: Some(crypto_oracle.clone()),
+                        asset_type: AssetType::Symbol,
+                        max_age_seconds: 3600,
+                        oracle_type: OracleType::Crypto,
+                        priority: 1,
+                    }],
+                ),
+                min_sources_required: 1,
+                stablecoin_sources: Vec::from_array(
+                    &env,
+                    [OracleSource {
+                        address: Some(crypto_oracle.clone()),
+                        asset_type: AssetType::Symbol,
+                        max_age_seconds: 3600,
+                        oracle_type: OracleType::Crypto,
+                        priority: 1,
+                    }],
+                ),
+            },
+            risk_config: RiskConfiguration {
+                correlation_limit: 50000000000,
+                max_daily_volume: 100000000000,
+                max_position_size: 50000000000,
+                volatility_threshold_bps: 10000,
+            },
+            twap_config: TWAPConfiguration {
+                enabled: false,
+                min_deviation_bps: 50,
+                periods: 1,
+            },
+        };
 
-    let mut pairs: Vec<EnhancedStablecoinPair> = env
-    .storage()
-    .instance()
-    .get(&Symbol::new(&env, "pairs"))
-    .unwrap_or(Vec::new(&env));
+        let mut pairs: Vec<EnhancedStablecoinPair> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "pairs"))
+            .unwrap_or(Vec::new(&env));
 
-pairs.push_back(pair);
-env.storage()
-    .instance()
-    .set(&Symbol::new(&env, "pairs"), &pairs);
+        pairs.push_back(pair);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "pairs"), &pairs);
 
-env.events().publish(
-    (Symbol::new(&env, "crypto_pair"), Symbol::new(&env, "added")),
-    (base_crypto, quote_crypto),
-);
-}
-
-    // NEW: Helper function to try different crypto asset formats
-   // Fixed version without to_string()
-   fn try_crypto_asset_formats(
-    env: &Env,
-    client: &ReflectorClient,
-    symbol: &Symbol,
-    current_time: u64,
-    max_age: u64,
-) -> Option<PriceData> {
-    let formats_to_try = vec![
-        &env,
-        Asset::Other(symbol.clone()),                    // "XLM"
-        Asset::Other(Symbol::new(env, "XLMUSD")),        // "XLMUSD" 
-        Asset::Other(Symbol::new(env, "XLMUSDT")),       // "XLMUSDT"
-        Asset::Other(Symbol::new(env, "XLM_USD")),       // "XLM_USD" (underscore allowed)
-    ];
-
-    for asset in formats_to_try.iter() {
         env.events().publish(
-            (Symbol::new(env, "debug"), Symbol::new(env, "trying_asset_format")),
-            (asset.clone(),),
+            (Symbol::new(&env, "crypto_pair"), Symbol::new(&env, "added")),
+            (base_crypto, quote_crypto),
         );
-
-        if let Some(price_data) = client.lastprice(&asset) {
-            env.events().publish(
-                (Symbol::new(env, "debug"), Symbol::new(env, "asset_format_success")),
-                (asset.clone(), price_data.price),
-            );
-
-            if check_price_freshness(&price_data, current_time, max_age) {
-                return Some(price_data);
-            }
-        }
     }
 
-    None
-}
+    fn try_crypto_asset_formats(
+        env: &Env,
+        client: &ReflectorClient,
+        symbol: &Symbol,
+        current_time: u64,
+        max_age: u64,
+    ) -> Option<PriceData> {
+        let formats_to_try = vec![
+            &env,
+            Asset::Other(symbol.clone()),              
+            Asset::Other(Symbol::new(env, "XLMUSD")),  
+            Asset::Other(Symbol::new(env, "XLMUSDT")), 
+            Asset::Other(Symbol::new(env, "XLM_USD")),
+        ];
 
-    
+        for asset in formats_to_try.iter() {
+            env.events().publish(
+                (
+                    Symbol::new(env, "debug"),
+                    Symbol::new(env, "trying_asset_format"),
+                ),
+                (asset.clone(),),
+            );
+
+            if let Some(price_data) = client.lastprice(&asset) {
+                env.events().publish(
+                    (
+                        Symbol::new(env, "debug"),
+                        Symbol::new(env, "asset_format_success"),
+                    ),
+                    (asset.clone(), price_data.price),
+                );
+
+                if check_price_freshness(&price_data, current_time, max_age) {
+                    return Some(price_data);
+                }
+            }
+        }
+
+        None
+    }
+
     pub fn debug_test_oracle(
         env: Env,
         oracle_address: Address,
@@ -1219,7 +1239,7 @@ env.events().publish(
         result
     }
 
-    // Debug function to manually test pair evaluation
+ 
     pub fn debug_evaluate_pair(env: Env, pair_index: u32) -> Option<EnhancedArbitrageOpportunity> {
         let pairs: Vec<EnhancedStablecoinPair> = env
             .storage()
@@ -1239,8 +1259,8 @@ env.events().publish(
                 Symbol::new(&env, "evaluating"),
             ),
             (
-                pair.base.base_asset_symbol.clone(),    // ✅ Correct field
-                pair.base.quote_asset_symbol.clone(),   // ✅ Correct field
+                pair.base.base_asset_symbol.clone(), 
+                pair.base.quote_asset_symbol.clone(), 
                 pair.enabled,
             ),
         );
@@ -1264,7 +1284,7 @@ env.events().publish(
         Self::check_enhanced_arbitrage(&env, &pair, &forex_oracle, &crypto_oracle, &stellar_oracle)
     }
 
-    // Debug function to get price source details
+  
     pub fn debug_get_price_sources(env: Env, pair_index: u32) -> Option<PriceSources> {
         let pairs: Vec<EnhancedStablecoinPair> = env
             .storage()
@@ -1279,7 +1299,7 @@ env.events().publish(
         Some(pairs.get(pair_index).unwrap().price_sources.clone())
     }
 
-    // Debug function to manually test price fetching
+ 
     pub fn debug_fetch_prices(
         env: Env,
         fiat_symbol: Symbol,
@@ -1404,17 +1424,26 @@ env.events().publish(
         trade_amount: i128,
         _venue_address: &Address,
     ) -> TradeExecution {
-        let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
-            (
-                opportunity.base_opportunity.pair.quote_asset_address.clone(),
-                opportunity.base_opportunity.pair.base_asset_address.clone()
-            )
-        } else {
-            (
-                opportunity.base_opportunity.pair.base_asset_address.clone(),
-                opportunity.base_opportunity.pair.quote_asset_address.clone()
-            )
-        };
+        let (token_in, token_out) =
+            if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+                (
+                    opportunity
+                        .base_opportunity
+                        .pair
+                        .quote_asset_address
+                        .clone(),
+                    opportunity.base_opportunity.pair.base_asset_address.clone(),
+                )
+            } else {
+                (
+                    opportunity.base_opportunity.pair.base_asset_address.clone(),
+                    opportunity
+                        .base_opportunity
+                        .pair
+                        .quote_asset_address
+                        .clone(),
+                )
+            };
 
         let deadline = env.ledger().timestamp() + 300;
 
@@ -1477,17 +1506,26 @@ env.events().publish(
         trade_amount: i128,
         _venue_address: &Address,
     ) -> Option<SwapResult> {
-        let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
-            (
-                opportunity.base_opportunity.pair.quote_asset_address.clone(),
-                opportunity.base_opportunity.pair.base_asset_address.clone()
-            )
-        } else {
-            (
-                opportunity.base_opportunity.pair.base_asset_address.clone(),
-                opportunity.base_opportunity.pair.quote_asset_address.clone()
-            )
-        };
+        let (token_in, token_out) =
+            if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+                (
+                    opportunity
+                        .base_opportunity
+                        .pair
+                        .quote_asset_address
+                        .clone(),
+                    opportunity.base_opportunity.pair.base_asset_address.clone(),
+                )
+            } else {
+                (
+                    opportunity.base_opportunity.pair.base_asset_address.clone(),
+                    opportunity
+                        .base_opportunity
+                        .pair
+                        .quote_asset_address
+                        .clone(),
+                )
+            };
 
         crate::dex::simulate_trade(env, &token_in, &token_out, trade_amount)
     }
@@ -1666,55 +1704,60 @@ env.events().publish(
         trade_amount: i128,
         venue_address: &Address,
     ) -> TradeExecution {
-        // env.current_contract_address().require_auth();
-        let (token_in, token_out) = if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
-            (
-                opportunity.base_opportunity.pair.quote_asset_address.clone(),
-                opportunity.base_opportunity.pair.base_asset_address.clone()
-            )
-        } else {
-            (
-                opportunity.base_opportunity.pair.base_asset_address.clone(),
-                opportunity.base_opportunity.pair.quote_asset_address.clone()
-            )
-        };
-    
+        let (token_in, token_out) =
+            if opportunity.base_opportunity.trade_direction == Symbol::new(env, "BUY") {
+                (
+                    opportunity
+                        .base_opportunity
+                        .pair
+                        .quote_asset_address
+                        .clone(),
+                    opportunity.base_opportunity.pair.base_asset_address.clone(),
+                )
+            } else {
+                (
+                    opportunity.base_opportunity.pair.base_asset_address.clone(),
+                    opportunity
+                        .base_opportunity
+                        .pair
+                        .quote_asset_address
+                        .clone(),
+                )
+            };
+
         let deadline = env.ledger().timestamp() + 300;
-        let config: ArbitrageConfig = env.storage().instance().get(&Symbol::new(env, "config")).unwrap();
-        let min_amount_out = trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
-        
-        let router_address = Address::from_string(&String::from_str(env, crate::dex::SOROSWAP_ROUTER_TESTNET));
+        let config: ArbitrageConfig = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, "config"))
+            .unwrap();
+        let min_amount_out =
+            trade_amount - ((trade_amount * config.slippage_tolerance_bps as i128) / 10000);
+
+        let router_address =
+            Address::from_string(&String::from_str(env, crate::dex::SOROSWAP_ROUTER_TESTNET));
 
         let token_client = TokenClient::new(env, &token_in);
         let expiration_ledger = env.ledger().sequence() + 1000;
-        
-        // token_client.approve(
-        //     &user,                         
-        // &env.current_contract_address(), 
-        // &trade_amount,
-        // &expiration_ledger,
-        // );
 
-
+      
 
         let dex_client = StellarDEXClient::new(env, &router_address);
-    
+
         let path = Vec::from_array(env, [token_in, token_out]);
-    
-        // ✅ FIXED: Direct values, no references
+
         let amounts = dex_client.swap_exact_tokens_for_tokens(
             &trade_amount,
             &min_amount_out,
             &path,
-            // &env.current_contract_address(),
             &user,
             &deadline,
         );
-    
+
         let amount_out = amounts.get(1).unwrap_or(0);
         let gas_cost = estimate_gas_cost(env, 3);
         let net_profit = amount_out - trade_amount - gas_cost;
-    
+
         let execution = TradeExecution {
             opportunity: opportunity.base_opportunity.clone(),
             executed_amount: trade_amount,
@@ -1723,40 +1766,35 @@ env.events().publish(
             execution_timestamp: env.ledger().timestamp(),
             status: Symbol::new(env, "SUCCESS"),
         };
-    
+
         env.events().publish(
             (Symbol::new(env, "user_trade"), Symbol::new(env, "executed")),
             (user.clone(), execution.clone()),
         );
-    
+
         execution
     }
 
-// ✅ ADD THIS HELPER FUNCTION TO YOUR IMPL BLOCK
-fn safe_balance_operation(
-    env: &Env,
-    profile: &mut UserProfile,
-    token: &Address,
-    operation: impl Fn(i128) -> i128
-) {
-    let mut balances = if profile.balances.len() == 0 {
-        Map::new(env)
-    } else {
-        profile.balances.clone()
-    };
-    
-    let current_balance = balances.get(token.clone()).unwrap_or(0);
-    let new_balance = operation(current_balance);
-    balances.set(token.clone(), new_balance);
-    profile.balances = balances;
+    fn safe_balance_operation(
+        env: &Env,
+        profile: &mut UserProfile,
+        token: &Address,
+        operation: impl Fn(i128) -> i128,
+    ) {
+        let mut balances = if profile.balances.len() == 0 {
+            Map::new(env)
+        } else {
+            profile.balances.clone()
+        };
+
+        let current_balance = balances.get(token.clone()).unwrap_or(0);
+        let new_balance = operation(current_balance);
+        balances.set(token.clone(), new_balance);
+        profile.balances = balances;
+    }
 }
 
 
-
-
-}
-
-// In lib.rs
 
 #[soroban_sdk::contractclient(name = "TokenClient")]
 pub trait Token {
@@ -1764,8 +1802,6 @@ pub trait Token {
     fn balance(e: Env, id: &Address) -> i128;
     fn approve(e: Env, from: &Address, spender: &Address, amount: &i128, expiration_ledger: &u32);
 }
-
-
 
 #[soroban_sdk::contractclient(name = "ArbBotClient")]
 pub trait ArbitrageBotContract {

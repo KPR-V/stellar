@@ -7,7 +7,7 @@ export * as rpc from '@stellar/stellar-sdk/rpc';
 export declare const networks: {
     readonly testnet: {
         readonly networkPassphrase: "Test SDF Network ; September 2015";
-        readonly contractId: "CBZDLZAJZS6AADJ4SU32ZDZM4TBGNH7FRFQWZCWIY64ILZUCL4DJWWZ5";
+        readonly contractId: "CDQSF6F3VNRMMB3RNFIPWNVAEXFZ7RYNITCF6RGBG5RMQ3ZQOGYEJLNO";
     };
 };
 export type ProposalType = {
@@ -435,6 +435,26 @@ export interface Client {
         simulate?: boolean;
     }) => Promise<AssembledTransaction<Array<Proposal>>>;
     /**
+     * Construct and simulate a get_proposals_paginated transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    get_proposals_paginated: ({ start, limit }: {
+        start: u64;
+        limit: u32;
+    }, options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<Array<Proposal>>>;
+    /**
      * Construct and simulate a get_active_proposals transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
      */
     get_active_proposals: (options?: {
@@ -451,6 +471,23 @@ export interface Client {
          */
         simulate?: boolean;
     }) => Promise<AssembledTransaction<Array<Proposal>>>;
+    /**
+     * Construct and simulate a get_proposal_count transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     */
+    get_proposal_count: (options?: {
+        /**
+         * The fee to pay for the transaction. Default: BASE_FEE
+         */
+        fee?: number;
+        /**
+         * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+         */
+        timeoutInSeconds?: number;
+        /**
+         * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+         */
+        simulate?: boolean;
+    }) => Promise<AssembledTransaction<u64>>;
     /**
      * Construct and simulate a get_stake transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
      */
@@ -642,7 +679,9 @@ export declare class Client extends ContractClient {
         execute_proposal: (json: string) => AssembledTransaction<null>;
         get_proposal: (json: string) => AssembledTransaction<Proposal>;
         get_all_proposals: (json: string) => AssembledTransaction<Proposal[]>;
+        get_proposals_paginated: (json: string) => AssembledTransaction<Proposal[]>;
         get_active_proposals: (json: string) => AssembledTransaction<Proposal[]>;
+        get_proposal_count: (json: string) => AssembledTransaction<bigint>;
         get_stake: (json: string) => AssembledTransaction<bigint>;
         get_stake_info: (json: string) => AssembledTransaction<Option<StakeInfo>>;
         get_total_staked: (json: string) => AssembledTransaction<bigint>;

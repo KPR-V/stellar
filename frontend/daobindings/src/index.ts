@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
   testnet: {
     networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CBZDLZAJZS6AADJ4SU32ZDZM4TBGNH7FRFQWZCWIY64ILZUCL4DJWWZ5",
+    contractId: "CDQSF6F3VNRMMB3RNFIPWNVAEXFZ7RYNITCF6RGBG5RMQ3ZQOGYEJLNO",
   }
 } as const
 
@@ -450,6 +450,26 @@ export interface Client {
   }) => Promise<AssembledTransaction<Array<Proposal>>>
 
   /**
+   * Construct and simulate a get_proposals_paginated transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_proposals_paginated: ({start, limit}: {start: u64, limit: u32}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Array<Proposal>>>
+
+  /**
    * Construct and simulate a get_active_proposals transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_active_proposals: (options?: {
@@ -468,6 +488,26 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<Array<Proposal>>>
+
+  /**
+   * Construct and simulate a get_proposal_count transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_proposal_count: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<u64>>
 
   /**
    * Construct and simulate a get_stake transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -684,7 +724,9 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAQZXhlY3V0ZV9wcm9wb3NhbAAAAAIAAAAAAAAACGV4ZWN1dG9yAAAAEwAAAAAAAAALcHJvcG9zYWxfaWQAAAAABgAAAAA=",
         "AAAAAAAAAAAAAAAMZ2V0X3Byb3Bvc2FsAAAAAQAAAAAAAAALcHJvcG9zYWxfaWQAAAAABgAAAAEAAAfQAAAACFByb3Bvc2Fs",
         "AAAAAAAAAAAAAAARZ2V0X2FsbF9wcm9wb3NhbHMAAAAAAAAAAAAAAQAAA+oAAAfQAAAACFByb3Bvc2Fs",
+        "AAAAAAAAAAAAAAAXZ2V0X3Byb3Bvc2Fsc19wYWdpbmF0ZWQAAAAAAgAAAAAAAAAFc3RhcnQAAAAAAAAGAAAAAAAAAAVsaW1pdAAAAAAAAAQAAAABAAAD6gAAB9AAAAAIUHJvcG9zYWw=",
         "AAAAAAAAAAAAAAAUZ2V0X2FjdGl2ZV9wcm9wb3NhbHMAAAAAAAAAAQAAA+oAAAfQAAAACFByb3Bvc2Fs",
+        "AAAAAAAAAAAAAAASZ2V0X3Byb3Bvc2FsX2NvdW50AAAAAAAAAAAAAQAAAAY=",
         "AAAAAAAAAAAAAAAJZ2V0X3N0YWtlAAAAAAAAAQAAAAAAAAAEdXNlcgAAABMAAAABAAAACw==",
         "AAAAAAAAAAAAAAAOZ2V0X3N0YWtlX2luZm8AAAAAAAEAAAAAAAAABHVzZXIAAAATAAAAAQAAA+gAAAfQAAAACVN0YWtlSW5mbwAAAA==",
         "AAAAAAAAAAAAAAAQZ2V0X3RvdGFsX3N0YWtlZAAAAAAAAAABAAAACw==",
@@ -727,7 +769,9 @@ export class Client extends ContractClient {
         execute_proposal: this.txFromJSON<null>,
         get_proposal: this.txFromJSON<Proposal>,
         get_all_proposals: this.txFromJSON<Array<Proposal>>,
+        get_proposals_paginated: this.txFromJSON<Array<Proposal>>,
         get_active_proposals: this.txFromJSON<Array<Proposal>>,
+        get_proposal_count: this.txFromJSON<u64>,
         get_stake: this.txFromJSON<i128>,
         get_stake_info: this.txFromJSON<Option<StakeInfo>>,
         get_total_staked: this.txFromJSON<i128>,

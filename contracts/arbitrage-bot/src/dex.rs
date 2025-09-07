@@ -1,6 +1,4 @@
-use soroban_sdk::{
-    contractclient, contracterror, contracttype, Address, Env, String, Vec,
-};
+use soroban_sdk::{contractclient, contracterror, contracttype, Address, Env, String, Vec};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -13,8 +11,7 @@ pub enum DEXError {
     SwapFailed = 5,
 }
 
-// ✅ FIXED: Official Soroswap Router interface from documentation
-// ✅ FIXED: Use references to match generated client expectations
+
 #[contractclient(name = "StellarDEXClient")]
 pub trait SoroswapRouter {
     fn swap_exact_tokens_for_tokens(
@@ -26,11 +23,7 @@ pub trait SoroswapRouter {
         deadline: &u64,
     ) -> Vec<i128>;
 
-    fn router_get_amounts_out(
-        e: Env,
-        amount_in: &i128,
-        path: &Vec<Address>,
-    ) -> Vec<i128>;
+    fn router_get_amounts_out(e: Env, amount_in: &i128, path: &Vec<Address>) -> Vec<i128>;
 }
 
 #[contractclient(name = "TokenClient")]
@@ -39,7 +32,6 @@ pub trait Token {
     fn transfer(e: Env, from: &Address, to: &Address, amount: &i128);
     fn balance(e: Env, id: &Address) -> i128;
 }
-
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,10 +42,11 @@ pub struct SwapResult {
     pub success: bool,
 }
 
-// Soroswap testnet router address
-pub const SOROSWAP_ROUTER_TESTNET: &str = "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS";
 
-// ✅ FIXED: Correct implementation using official interface
+pub const SOROSWAP_ROUTER_TESTNET: &str =
+    "CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS";
+
+
 pub fn execute_real_swap(
     env: &Env,
     token_a: &Address,
@@ -70,20 +63,19 @@ pub fn execute_real_swap(
     let router_address = Address::from_string(&String::from_str(env, SOROSWAP_ROUTER_TESTNET));
     let router = StellarDEXClient::new(env, &router_address);
 
-    // ✅ CRITICAL: Token approval is required before swap
     let token_client = TokenClient::new(env, token_a);
     let expiration_ledger = env.ledger().sequence() + 1000;
-    
+
     token_client.approve(
         &env.current_contract_address(),
-       &router_address,
+        &router_address,
         &amount_in,
         &expiration_ledger,
     );
 
     let path = Vec::from_array(env, [token_a.clone(), token_b.clone()]);
 
-    // ✅ FIXED: Using official swap method
+
     let amounts = router.swap_exact_tokens_for_tokens(
         &amount_in,
         &min_amount_out,
@@ -101,8 +93,8 @@ pub fn execute_real_swap(
         return Err(DEXError::SlippageExceeded);
     }
 
-    let fees_paid = (amount_in * 30) / 10000; // 0.3% fee
-    
+    let fees_paid = (amount_in * 30) / 10000; 
+
     Ok(SwapResult {
         amount_out,
         fees_paid,
@@ -111,7 +103,7 @@ pub fn execute_real_swap(
     })
 }
 
-// ✅ FIXED: Using official method name
+
 pub fn get_amounts_out_real(
     env: &Env,
     amount_in: i128,
@@ -122,8 +114,8 @@ pub fn get_amounts_out_real(
     let router = StellarDEXClient::new(env, &router_address);
 
     let path = Vec::from_array(env, [token_a.clone(), token_b.clone()]);
-    
-    // ✅ CRITICAL: Using correct method name router_get_amounts_out
+
+ 
     let amounts = router.router_get_amounts_out(&amount_in, &path);
 
     if amounts.len() < 2 {
@@ -150,7 +142,7 @@ pub fn calculate_slippage_bps(expected_out: i128, actual_out: i128) -> u32 {
 pub fn estimate_gas_cost(env: &Env, complexity_score: u32) -> i128 {
     let base_cost = 100000i128;
     let variable_cost = (complexity_score as i128) * 2500;
-    
+
     let network_multiplier = if env.ledger().sequence() % 100 > 80 {
         150
     } else {

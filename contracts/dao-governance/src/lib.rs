@@ -141,12 +141,6 @@ impl DAOGovernance {
         env.storage()
             .instance()
             .set(&Symbol::new(&env, "initialized"), &true);
-
-        let empty_proposals: Vec<Proposal> = Vec::new(&env);
-        env.storage()
-            .instance()
-            .set(&Symbol::new(&env, "proposals"), &empty_proposals);
-
         env.events().publish(
             (Symbol::new(&env, "dao"), Symbol::new(&env, "initialized")),
             (admin, arbitrage_bot_address),
@@ -336,17 +330,6 @@ impl DAOGovernance {
 
         let proposal_key = (Symbol::new(&env, "proposal"), proposal_id);
         env.storage().persistent().set(&proposal_key, &proposal);
-
-        let mut proposals: Vec<Proposal> = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(&env, "proposals"))
-            .unwrap();
-        proposals.push_back(proposal.clone());
-        env.storage()
-            .instance()
-            .set(&Symbol::new(&env, "proposals"), &proposals);
-
         env.events().publish(
             (
                 Symbol::new(&env, "proposal_created"),
@@ -551,23 +534,81 @@ impl DAOGovernance {
     }
 
     pub fn get_all_proposals(env: Env) -> Vec<Proposal> {
-        env.storage()
+        let proposal_count: u64 = env
+            .storage()
             .instance()
-            .get(&Symbol::new(&env, "proposals"))
-            .unwrap_or(Vec::new(&env))
-    }
+            .get(&Symbol::new(&env, "proposal_counter"))
+            .unwrap_or(0);
 
-    pub fn get_active_proposals(env: Env) -> Vec<Proposal> {
-        let all_proposals = Self::get_all_proposals(env.clone());
-        let mut active = Vec::new(&env);
+        let mut proposals = Vec::new(&env);
 
-        for proposal in all_proposals.iter() {
-            if proposal.status == ProposalStatus::Active {
-                active.push_back(proposal);
+        for i in 0..proposal_count {
+            let proposal_key = (Symbol::new(&env, "proposal"), i);
+            if let Some(proposal) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, u64), Proposal>(&proposal_key)
+            {
+                proposals.push_back(proposal);
             }
         }
 
-        active
+        proposals
+    }
+
+    pub fn get_proposals_paginated(env: Env, start: u64, limit: u32) -> Vec<Proposal> {
+        let proposal_count: u64 = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "proposal_counter"))
+            .unwrap_or(0);
+
+        let mut proposals = Vec::new(&env);
+        let end = (start + limit as u64).min(proposal_count);
+
+        for i in start..end {
+            let proposal_key = (Symbol::new(&env, "proposal"), i);
+            if let Some(proposal) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, u64), Proposal>(&proposal_key)
+            {
+                proposals.push_back(proposal);
+            }
+        }
+
+        proposals
+    }
+
+    pub fn get_active_proposals(env: Env) -> Vec<Proposal> {
+        let proposal_count: u64 = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "proposal_counter"))
+            .unwrap_or(0);
+
+        let mut active_proposals = Vec::new(&env);
+
+        for i in 0..proposal_count {
+            let proposal_key = (Symbol::new(&env, "proposal"), i);
+            if let Some(proposal) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, u64), Proposal>(&proposal_key)
+            {
+                if proposal.status == ProposalStatus::Active {
+                    active_proposals.push_back(proposal);
+                }
+            }
+        }
+
+        active_proposals
+    }
+    pub fn get_proposal_count(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&Symbol::new(&env, "proposal_counter"))
+            .unwrap_or(0)
     }
 
     pub fn get_stake(env: Env, user: Address) -> i128 {
