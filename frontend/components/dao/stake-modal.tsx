@@ -192,7 +192,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-none">
       <div className="absolute inset-0 bg-black/80" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md bg-black/40 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 font-raleway shadow-2xl">
         <div className="flex items-center justify-between mb-6">
@@ -208,15 +208,14 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
 
         <div className="bg-black/30 backdrop-blur-sm rounded-xl p-4 mb-6 border border-white/10">
           <div className="text-white/70 mb-3 font-medium">Current Stake Info:</div>
-          <div className="text-white/90 text-lg font-raleway font-medium">Amount: {formatStakeAmount(currentStake)} KALE</div>
-          <div className="text-white/60 text-sm mt-1">Total Staked: {formatStakeAmount(totalStaked)} KALE</div>
+          <div className="text-white/90 text-lg font-raleway font-medium">Your Stake: {formatStakeAmount(currentStake)} KALE</div>
+          <div className="text-white/60 text-sm mt-1">Total Staked on CalibreX: {formatStakeAmount(totalStaked)} KALE</div>
           {stakeInfo && (
             <div className="text-white/50 text-xs mt-3 space-y-1 pt-3 border-t border-white/10">
-              <div>Staked: <span className="text-white/70">{formatTimestamp(stakeInfo.staked_at)}</span></div>
-              <div>Last Update: <span className="text-white/70">{formatTimestamp(stakeInfo.last_stake_update)}</span></div>
+              <div> Your last Stake: <span className="text-white/70">{formatTimestamp(stakeInfo.staked_at)}</span></div>
               {mode === 'unstake' && (
                 <div className={`font-medium ${canUnstake() ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {canUnstake() ? '✓ Can unstake' : '⏳ Cooldown period (7 days) not met'}
+                  {canUnstake() ? '✓ Can unstake' : 'Cooldown period (7 days) not met'}
                 </div>
               )}
             </div>
@@ -229,7 +228,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
             disabled={isLoading}
             className={`flex-1 px-4 py-3 text-sm disabled:opacity-50 transition-all duration-300 font-medium ${
               mode === 'stake' 
-                ? 'bg-black/30 text-white border-r border-white/20' : 'text-white/60 hover:text-white/90 hover:bg-white/5'
+                ? 'bg-zinc-800/30 text-white border-r border-white/20' : 'text-white/60 hover:text-white/90 hover:bg-white/5'
             }`}
           >
             Stake
@@ -266,7 +265,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
 
           {mode === 'unstake' && stakeInfo && (
             <div className="text-xs text-white/60 p-3 bg-yellow-400/10 border border-yellow-400/30 rounded-xl backdrop-blur-sm font-raleway">
-              <span className="text-yellow-400">⚠️</span> Note: Unstaking has a 7-day cooldown period from your last stake update.
+             Note: Unstaking has a 7-day cooldown period from your last stake update.
             </div>
           )}
 

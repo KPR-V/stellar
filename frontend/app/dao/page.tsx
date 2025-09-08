@@ -4,9 +4,13 @@ import { useRouter } from 'next/navigation'
 import AnimatedBackground from '../../components/animated-background'
 import ProposalCreationForm from '../../components/dao/proposal-creation-form'
 import ProposalsList from '../../components/dao/proposals-list'
+import ProposalModal from '../../components/dao/proposal-modal'
 import StakeModal from '../../components/dao/stake-modal'
+import Message from '../../components/message'
 import StellarConnect from '../stellar-connect'
 import { useWallet } from '../../hooks/useWallet'
+import { useProposals } from '../../hooks/useProposals'
+import { useMessage } from '../../hooks/useMessage'
 
 const Page = () => {
   const { address } = useWallet()
@@ -15,6 +19,16 @@ const Page = () => {
   const [refreshKey, setRefreshKey] = React.useState(0)
   const [hasStake, setHasStake] = React.useState(false)
   const [showCreateForm, setShowCreateForm] = React.useState(false)
+  
+  const {
+    selectedProposal,
+    isModalOpen,
+    openProposalModal,
+    closeProposalModal,
+    refreshProposal
+  } = useProposals()
+
+  const { messageState, hideMessage } = useMessage()
   
   const handleStakeUpdate = () => {
     setRefreshKey(prev => prev + 1)
@@ -26,20 +40,9 @@ const Page = () => {
     setShowCreateForm(false) // Hide the form after creation
   }
 
-  // Placeholder functions for proposal actions
-  const handleVote = async (proposalId: number, voteYes: boolean) => {
-    console.log(`Voting ${voteYes ? 'Yes' : 'No'} on proposal ${proposalId}`)
-    // TODO: Implement voting logic
-  }
-
-  const handleExecute = async (proposalId: number) => {
-    console.log(`Executing proposal ${proposalId}`)
-    // TODO: Implement execution logic
-  }
-
-  const handleCancel = async (proposalId: number) => {
-    console.log(`Cancelling proposal ${proposalId}`)
-    // TODO: Implement cancellation logic
+  const handleProposalUpdated = (updatedProposal: any) => {
+    refreshProposal(updatedProposal)
+    setRefreshKey(prev => prev + 1) // Also refresh the list
   }
 
   return (
@@ -47,7 +50,7 @@ const Page = () => {
       <AnimatedBackground />
       <div className="relative z-10">
         <main className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-          
+          {/* Header Section */}
           <div className="flex items-center justify-between relative mb-12">
             {/* Left: CX Logo */}
             <div className="flex-shrink-0 items-center">
@@ -105,17 +108,10 @@ const Page = () => {
           </div>
 
           {/* Proposals List */}
-          <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl p-8 shadow-2xl">
-            <h2 className="text-white/90 text-xl font-medium mb-6 font-raleway">Proposals</h2>
-            <ProposalsList
-              key={refreshKey}
-              onVote={handleVote}
-              onExecute={handleExecute}
-              onCancel={handleCancel}
-              userAddress={address || undefined}
-              hasStake={hasStake}
-            />
-          </div>
+          <ProposalsList 
+            refreshKey={refreshKey}
+            onViewProposal={openProposalModal}
+          />
         </main>
       </div>
 
@@ -127,10 +123,24 @@ const Page = () => {
         onProposalCreated={handleProposalCreated}
       />
 
+      <ProposalModal
+        proposal={selectedProposal}
+        isOpen={isModalOpen}
+        onClose={closeProposalModal}
+        onProposalUpdate={handleProposalUpdated}
+      />
+
       <StakeModal 
         isOpen={isStakeOpen} 
         onClose={() => setIsStakeOpen(false)}
         onStakeUpdate={handleStakeUpdate}
+      />
+
+      {/* Message Component */}
+      <Message 
+        message={messageState.message}
+        isVisible={messageState.isVisible}
+        onClose={hideMessage}
       />
     </div>
   )

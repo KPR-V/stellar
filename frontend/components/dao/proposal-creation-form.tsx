@@ -1,6 +1,7 @@
 'use client'
 import React, { useState } from 'react'
 import { useWallet } from '../../hooks/useWallet'
+import { useMessage } from '../../hooks/useMessage'
 
 interface Props {
   isOpen: boolean
@@ -11,6 +12,7 @@ interface Props {
 
 const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake, onProposalCreated }) => {
   const { address, walletKit } = useWallet()
+  const { showMessage } = useMessage()
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -173,7 +175,9 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
       console.log('✅ Submit result:', submitResult)
   
       if (submitResult.success) {
-        setSuccess(`Proposal "${form.title}" created successfully! Transaction: ${submitResult.data.hash?.slice(0, 16)}...`)
+        const successMessage = `Proposal "${form.title}" created successfully!`
+        setSuccess(successMessage)
+        showMessage(successMessage)
         resetForm()
         if (onProposalCreated) {
           onProposalCreated()

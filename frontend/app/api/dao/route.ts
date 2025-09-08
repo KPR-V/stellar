@@ -3,7 +3,7 @@ import { Client, networks, Proposal, ProposalData, ProposalType, ProposalStatus 
 import { SorobanRpc, TransactionBuilder, scValToNative } from '@stellar/stellar-sdk'
 
 const RPC_URL = 'https://soroban-testnet.stellar.org'
-const DAO_CONTRACT = "CDQSF6F3VNRMMB3RNFIPWNVAEXFZ7RYNITCF6RGBG5RMQ3ZQOGYEJLNO"
+const DAO_CONTRACT = process.env.DAO_CONTRACT_ADDRESS!
 const NETWORK_PASSPHRASE = networks.testnet.networkPassphrase
 
 // ✅ Define proper types for simulation results
@@ -29,7 +29,7 @@ function parseRetvalData(retval: any): any[] {
   
   // Check if it's a map (config data - means no proposals)
   if (retval._switch?.name === 'scvMap') {
-    console.log('Found scvMap (config data) - no proposals exist')
+    console.log('Found scvMap (config data) - no proposals exist yet')
     return []
   }
   
@@ -45,6 +45,7 @@ function parseRetvalData(retval: any): any[] {
   }
   
   console.log('Unknown retval format:', retval._switch?.name)
+  console.log('Assuming no proposals exist, returning empty array')
   return []
 }
 
@@ -128,22 +129,67 @@ function parseScvValue(scv: any): any {
 
 // ✅ Updated formatProposal to handle the correct Proposal type from bindings
 function formatProposal(proposalData: any): any {
+  console.log('🔧 Formatting proposal data:', proposalData)
+  
+  // Helper function to convert Buffer to string
+  const bufferToString = (buffer: any): string => {
+    if (!buffer) return ''
+    if (typeof buffer === 'string') return buffer
+    if (buffer.type === 'Buffer' && Array.isArray(buffer.data)) {
+      return Buffer.from(buffer.data).toString('utf8')
+    }
+    if (Buffer.isBuffer(buffer)) {
+      return buffer.toString('utf8')
+    }
+    return String(buffer)
+  }
+
+  // Helper function to extract string from array or buffer
+  const extractString = (value: any): string => {
+    if (!value) return ''
+    if (Array.isArray(value) && value.length > 0) {
+      return bufferToString(value[0])
+    }
+    return bufferToString(value)
+  }
+
+  // Helper function to extract address from ChildUnion
+  const extractAddress = (addressObj: any): string => {
+    if (!addressObj) return ''
+    if (typeof addressObj === 'string') return addressObj
+    
+    try {
+      // Handle Stellar address objects
+      if (addressObj._value && Buffer.isBuffer(addressObj._value)) {
+        return addressObj._value.toString('hex')
+      }
+      if (addressObj._value && addressObj._value._value && Buffer.isBuffer(addressObj._value._value)) {
+        return addressObj._value._value.toString('hex')
+      }
+      return String(addressObj)
+    } catch (error) {
+      console.warn('Failed to extract address:', error)
+      return 'Unknown Address'
+    }
+  }
+  
   return {
     id: Number(proposalData.id || 0),
-    proposer: proposalData.proposer || '',
-    proposal_type: proposalData.proposal_type?.tag || proposalData.proposal_type || '',
-    title: proposalData.title || '',
-    description: proposalData.description || '',
-    target_contract: proposalData.target_contract || '',
+    proposer: extractAddress(proposalData.proposer),
+    proposal_type: extractString(proposalData.proposal_type) || 'Unknown',
+    title: bufferToString(proposalData.title) || 'Untitled Proposal',
+    description: bufferToString(proposalData.description) || 'No description provided',
+    target_contract: extractAddress(proposalData.target_contract),
     created_at: Number(proposalData.created_at || 0),
-    voting_ends_at: Number(proposalData.voting_ends_at || 0),
+    voting_ends_at: Number(proposalData.created_at || 0) + Number(proposalData.voting_ends_at || 0),
     execution_earliest: Number(proposalData.execution_earliest || 0),
     yes_votes: String(proposalData.yes_votes || '0'),
     no_votes: String(proposalData.no_votes || '0'),
-    status: proposalData.status?.tag || proposalData.status || 'Active',
+    status: extractString(proposalData.status) || 'Active',
     quorum_required: String(proposalData.quorum_required || '0'),
     executed_at: proposalData.executed_at ? Number(proposalData.executed_at) : null,
     cancelled_at: proposalData.cancelled_at ? Number(proposalData.cancelled_at) : null,
+    proposal_data: proposalData.proposal_data || null,
   }
 }
 
@@ -349,16 +395,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { action } = body
 
     switch (action) {
-      case 'get_active_proposals':
-        return await getActiveProposals()
-      case 'get_all_proposals':
-        return await getAllProposals()
-      case 'get_proposal_count':
-        return await getProposalCount()
-      case 'get_proposals_paginated':
-        return await getProposalsPaginated(body)
-      case 'get_proposal':
-        return await getProposal(body)
       case 'create_proposal':
         return await createProposal(body)
       case 'cancel_proposal':
@@ -385,6 +421,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return await getAdmin()
       case 'get_user_vote':
         return await getUserVote(body)
+      case 'get_all_proposals':
+        return await getAllProposals()
+      case 'get_active_proposals':
+        return await getActiveProposals()
+      case 'get_proposal':
+        return await getProposal(body)
       case 'submit':
         return await submitSigned(body)
       default:
@@ -396,191 +438,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// ✅ Debug function to check what the contract actually returns
-async function debugContractFunctions(): Promise<NextResponse> {
-  try {
-    console.log('🔍 Debugging contract functions...')
-    
-    const client = new Client({
-      contractId: DAO_CONTRACT,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-    })
-
-    // Check what functions are available
-    console.log('Available functions on client:', Object.getOwnPropertyNames(client))
-
-    // Try to get raw simulation results
-    const allTx = await client.get_all_proposals()
-    const allSimulation = await allTx.simulate()
-    
-    console.log('Raw get_all_proposals simulation:', {
-      result: allSimulation.result
-    })
-
-    const activeTx = await client.get_active_proposals()
-    const activeSimulation = await activeTx.simulate()
-    
-    console.log('Raw get_active_proposals simulation:', {
-      result: activeSimulation.result
-    })
-
-    return NextResponse.json({ 
-      success: true, 
-      data: {
-        all_proposals: allSimulation.result,
-        active_proposals: activeSimulation.result,
-        available_functions: Object.getOwnPropertyNames(client)
-      }
-    })
-
-  } catch (error) {
-    console.error('❌ Debug error:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Debug failed' 
-    }, { status: 500 })
-  }
-}
-
-// ✅ Updated getActiveProposals to handle the actual contract response
-async function getActiveProposals(): Promise<NextResponse> {
-  try {
-    const client = new Client({
-      contractId: DAO_CONTRACT,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-    })
-
-    const result = await client.get_active_proposals({ simulate: true })
-    
-    if (result.result && Array.isArray(result.result)) {
-      const proposals = result.result.map(formatProposal)
-      return NextResponse.json({ success: true, proposals })
-    }
-    
-    return NextResponse.json({ success: true, proposals: [] })
-  } catch (error) {
-    console.error('Error fetching active proposals:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to fetch active proposals' 
-    }, { status: 500 })
-  }
-}
-
-async function getAllProposals(): Promise<NextResponse> {
-  try {
-    const client = new Client({
-      contractId: DAO_CONTRACT,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-    })
-
-    const result = await client.get_all_proposals({ simulate: true })
-    console.log(result.result)
-    if (result.result && Array.isArray(result.result)) {
-      const proposals = result.result.map(formatProposal)
-      return NextResponse.json({ success: true, proposals })
-    }
-    
-    return NextResponse.json({ success: true, proposals: [] })
-  } catch (error) {
-    console.error('Error fetching all proposals:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to fetch all proposals' 
-    }, { status: 500 })
-  }
-}
-
-async function getProposalCount(): Promise<NextResponse> {
-  try {
-    const client = new Client({
-      contractId: DAO_CONTRACT,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-    })
-
-    const result = await client.get_proposal_count({ simulate: true })
-    const count = Number(result.result || 0)
-    
-    return NextResponse.json({ success: true, data: { count } })
-  } catch (error) {
-    console.error('Error fetching proposal count:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to fetch proposal count' 
-    }, { status: 500 })
-  }
-}
-
-async function getProposalsPaginated(params: any): Promise<NextResponse> {
-  const { start = 0, limit = 10 } = params
-  try {
-    const client = new Client({
-      contractId: DAO_CONTRACT,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-    })
-
-    const result = await client.get_proposals_paginated({
-      start: BigInt(start),
-      limit: Number(limit)
-    }, { simulate: true })
-    
-    if (result.result && Array.isArray(result.result)) {
-      const proposals = result.result.map(formatProposal)
-      return NextResponse.json({ success: true, proposals, pagination: { start, limit } })
-    }
-    
-    return NextResponse.json({ success: true, proposals: [], pagination: { start, limit } })
-  } catch (error) {
-    console.error('Error fetching paginated proposals:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to fetch paginated proposals' 
-    }, { status: 500 })
-  }
-}
-
-// Keep all your other functions unchanged - they don't have the type conflict...
-// [Rest of your functions remain exactly the same]
-
-
-async function getProposal(params: any): Promise<NextResponse> {
-  const { proposal_id } = params
-  try {
-    const client = new Client({
-      contractId: DAO_CONTRACT,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-    })
-
-    const assembledTx = await client.get_proposal({ proposal_id: BigInt(proposal_id) })
-    const simulation = await assembledTx.simulate()
-    
-    console.log('✅ Single proposal simulation result:', simulation)
-    
-    if (simulation.result) {
-      const proposal = formatProposal(simulation.result)
-      console.log('📋 Formatted single proposal:', proposal)
-      return NextResponse.json({ success: true, data: { proposal } })
-    }
-    
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Proposal not found' 
-    }, { status: 404 })
-
-  } catch (error) {
-    console.error('❌ Error fetching single proposal:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Proposal not found' 
-    }, { status: 500 })
-  }
-}
 
 // ✅ FIXED: Enhanced createProposal for ARBITRAGE BOT updates
 async function createProposal(params: any): Promise<NextResponse> {
@@ -836,7 +693,32 @@ async function voteOnProposal(params: any): Promise<NextResponse> {
     return NextResponse.json({ success: true, data: { transactionXdr } })
   } catch (error) {
     console.error('Vote error:', error)
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to prepare vote' })
+    
+    let errorMessage = 'Failed to prepare vote'
+    let errorType = 'UNKNOWN'
+    
+    if (error instanceof Error) {
+      const errorStr = error.message
+      
+      if (errorStr.includes('InvalidAction') || errorStr.includes('UnreachableCodeReached')) {
+        if (errorStr.includes('vote')) {
+          errorMessage = 'Unable to vote on this proposal. You may have already voted, the voting period may have ended, or you need to stake KALE tokens first.'
+          errorType = 'VOTE_REJECTED'
+        }
+      } else if (errorStr.includes('insufficient')) {
+        errorMessage = 'Insufficient balance or stake to vote on this proposal.'
+        errorType = 'INSUFFICIENT_BALANCE'
+      } else {
+        errorMessage = errorStr
+      }
+    }
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: errorMessage,
+      errorType,
+      originalError: error instanceof Error ? error.message : String(error)
+    })
   }
 }
 
@@ -1093,6 +975,179 @@ async function getUserVote(params: any): Promise<NextResponse> {
   } catch (error) {
     console.error('Get user vote error:', error)
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to get user vote' })
+  }
+}
+
+async function getAllProposals(): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
+    })
+
+    const result = await client.get_all_proposals({ simulate: true })
+    console.log('📋 Raw get_all_proposals result:', result)
+    
+    // Extract the actual result value - check multiple possible locations
+    let retval = null
+    if (result.simulation && 'result' in result.simulation && result.simulation.result) {
+      retval = result.simulation.result.retval
+    } else if (result.result) {
+      retval = result.result
+    }
+    
+    console.log('📋 Using retval:', retval)
+    
+    const rawProposals = parseRetvalData(retval)
+    console.log('📋 Parsed proposals data:', rawProposals)
+    
+    const proposals = rawProposals.map((proposal: any) => formatProposal(proposal))
+    console.log('✅ Formatted proposals:', proposals)
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: { 
+        proposals: proposals,
+        count: proposals.length 
+      } 
+    })
+  } catch (error) {
+    console.error('Get all proposals error:', error)
+    
+    // If it's a parsing error due to no proposals, return empty array
+    if (error instanceof Error && error.message.includes('ScSpecType')) {
+      console.log('📋 No proposals found, returning empty array')
+      return NextResponse.json({ 
+        success: true, 
+        data: { 
+          proposals: [],
+          count: 0 
+        } 
+      })
+    }
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to get all proposals' 
+    })
+  }
+}
+
+async function getActiveProposals(): Promise<NextResponse> {
+  try {
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
+    })
+
+    const result = await client.get_active_proposals({ simulate: true })
+    console.log('📋 Raw get_active_proposals result:', result)
+    
+    // Extract the actual result value - check multiple possible locations
+    let retval = null
+    if (result.simulation && 'result' in result.simulation && result.simulation.result) {
+      retval = result.simulation.result.retval
+    } else if (result.result) {
+      retval = result.result
+    }
+    
+    console.log('📋 Using retval:', retval)
+    
+    const rawProposals = parseRetvalData(retval)
+    console.log('📋 Parsed active proposals data:', rawProposals)
+    
+    const proposals = rawProposals.map((proposal: any) => formatProposal(proposal))
+    console.log('✅ Formatted active proposals:', proposals)
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: { 
+        proposals: proposals,
+        count: proposals.length 
+      } 
+    })
+  } catch (error) {
+    console.error('Get active proposals error:', error)
+    
+    // If it's a parsing error due to no proposals, return empty array
+    if (error instanceof Error && error.message.includes('ScSpecType')) {
+      console.log('📋 No active proposals found, returning empty array')
+      return NextResponse.json({ 
+        success: true, 
+        data: { 
+          proposals: [],
+          count: 0 
+        } 
+      })
+    }
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to get active proposals' 
+    })
+  }
+}
+
+async function getProposal(params: any): Promise<NextResponse> {
+  const { proposal_id } = params
+  
+  if (!proposal_id && proposal_id !== 0) {
+    return NextResponse.json({ success: false, error: 'proposal_id is required' }, { status: 400 })
+  }
+
+  try {
+    const client = new Client({
+      contractId: DAO_CONTRACT,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      rpcUrl: RPC_URL,
+    })
+
+    const result = await client.get_proposal({ proposal_id: BigInt(proposal_id) }, { simulate: true })
+    console.log('📋 Raw get_proposal result:', result)
+    
+    // Extract the actual result value
+    let retval = null
+    if (result.simulation && 'result' in result.simulation && result.simulation.result) {
+      retval = result.simulation.result.retval
+    } else if (result.result) {
+      retval = result.result
+    }
+    
+    console.log('📋 Using retval:', retval)
+    
+    if (!retval) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Proposal not found' 
+      }, { status: 404 })
+    }
+    
+    const proposalData = parseScvItem(retval)
+    console.log('📋 Parsed proposal data:', proposalData)
+    
+    const proposal = formatProposal(proposalData)
+    console.log('✅ Formatted proposal:', proposal)
+    
+    return NextResponse.json({ 
+      success: true, 
+      proposal: proposal
+    })
+  } catch (error) {
+    console.error('Get proposal error:', error)
+    
+    if (error instanceof Error && error.message.includes('not found')) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Proposal not found' 
+      }, { status: 404 })
+    }
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to get proposal' 
+    })
   }
 }
 
