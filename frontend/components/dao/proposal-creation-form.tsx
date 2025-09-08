@@ -55,7 +55,6 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    
     if (name.includes('.')) {
       const [section, field] = name.split('.')
       setForm(prev => ({
@@ -112,7 +111,6 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    
     if (!address || !walletKit) {
       setError('Please connect your wallet first')
       return
@@ -127,9 +125,7 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
     setError(null)
     setSuccess(null)
   
-    try {
-      console.log('🚀 Creating proposal with data:', form)
-  
+    try {  
       const response = await fetch('/api/dao', {
         method: 'POST',
         headers: {
@@ -146,20 +142,13 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
         }),
       })
   
-      const result = await response.json()
-      console.log('📋 API Response:', result)
-  
+      const result = await response.json()  
       if (!result.success) {
         setError(result.error || 'Failed to prepare proposal transaction')
         return
       }
   
-    
-      console.log('✍️ Signing transaction with wallet...')
-      const signedXdr = await walletKit.signTransaction(result.data.transactionXdr)
-      
-    
-      console.log('📤 Submitting signed transaction...')
+      const signedXdr = await walletKit.signTransaction(result.data.transactionXdr)      
       const submitResponse = await fetch('/api/dao', {
         method: 'POST',
         headers: {
@@ -171,9 +160,7 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
         }),
       })
   
-      const submitResult = await submitResponse.json()
-      console.log('✅ Submit result:', submitResult)
-  
+      const submitResult = await submitResponse.json()  
       if (submitResult.success) {
         const successMessage = `Proposal "${form.title}" created successfully!`
         setSuccess(successMessage)
@@ -202,7 +189,6 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
     }
   }
   
-  // ✅ Add the getStructuredProposalData function
   const getStructuredProposalData = (proposalType: string, formData: any) => {
     switch (proposalType) {
       case 'UpdateConfig':
@@ -240,17 +226,14 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
             liquidity_threshold: '1000000000',
           }
         }
-      
       case 'PausePair':
         return {
           symbol_data: formData.symbol_data.symbol
         }
-      
       case 'TransferAdmin':
         return {
           admin_address: formData.admin_data.new_admin
         }
-      
       case 'UpdateRiskManager':
       case 'EmergencyStop':
       default:
@@ -521,22 +504,6 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
             </div>
           </div>
         )
-        return (
-          <div className="space-y-6">
-            <h4 className="text-white/90 font-medium font-raleway text-lg border-b border-white/10 pb-3">Admin Transfer</h4>
-            <div>
-              <label className="block text-white/70 text-sm mb-3 font-raleway">New Admin Address</label>
-              <input
-                type="text"
-                name="admin_data.new_admin"
-                value={form.admin_data.new_admin}
-                onChange={handleInputChange}
-                placeholder="New admin address"
-                className="w-full bg-black/20 backdrop-blur-sm border border-white/10 focus:border-white/30 rounded-xl px-4 py-3 text-white placeholder-white/40 transition-all duration-300 outline-none font-raleway"
-              />
-            </div>
-          </div>
-        )
 
       default:
         return (
@@ -558,13 +525,10 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
     }
   }
 
-  // Don't render if modal is not open
   if (!isOpen) return null
-
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-black/80 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto faq-scrollbar">
-        {/* Modal Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10 top-0 bg-black/80 backdrop-blur-lg sticky z-50">
           <h2 className="text-white/90 text-xl font-medium font-raleway">Create Proposal</h2>
           <button
@@ -575,9 +539,7 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
           </button>
         </div>
 
-        {/* Modal Content */}
         <div className="p-6 space-y-6">
-          {/* Success/Error Messages */}
           {success && (
             <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-xl p-4 backdrop-blur-sm">
               <div className="text-emerald-400 font-raleway">{success}</div>
@@ -590,9 +552,7 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
             </div>
           )}
 
-          {/* Proposal Creation Form */}
           <form onSubmit={handleCreate} className="space-y-8">
-            {/* Basic Information */}
             <div className="space-y-6">
               <div>
                 <label className="block text-white/70 text-sm mb-3 font-raleway">Title</label>
@@ -646,10 +606,8 @@ const ProposalCreationForm: React.FC<Props> = ({ isOpen, onClose, onRequireStake
               </div>
             </div>
 
-            {/* Proposal-Specific Data */}
             {renderProposalDataFields()}
 
-            {/* Action Buttons */}
             <div className="flex space-x-4 pt-6 border-t border-white/10">
               <button
                 type="button"

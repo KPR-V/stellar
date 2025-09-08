@@ -1,11 +1,9 @@
-// app/api/contract/submit/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { SorobanRpc, TransactionBuilder, Networks, Transaction, FeeBumpTransaction } from '@stellar/stellar-sdk';
+import { SorobanRpc, TransactionBuilder, Networks, FeeBumpTransaction } from '@stellar/stellar-sdk';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const { signedXdr } = await request.json();
-
     if (!signedXdr) {
       return NextResponse.json({
         success: false,
@@ -13,12 +11,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
-    console.log('=== XDR SUBMISSION DEBUGGING ===');
-    console.log('Received signed XDR length:', signedXdr.length);
-    console.log('XDR first 200 chars:', signedXdr.substring(0, 200));
-    console.log('XDR last 100 chars:', signedXdr.substring(signedXdr.length - 100));
-
-    // Validate XDR format before parsing
     if (!signedXdr.match(/^[A-Za-z0-9+/]+=*$/)) {
       console.error('Invalid XDR format - contains non-base64 characters');
       return NextResponse.json({
@@ -31,36 +23,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     
     let transaction;
     try {
-      console.log('Attempting to parse XDR...');
       transaction = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
-      console.log('Successfully parsed transaction from XDR');
-      
-      // Log transaction details for debugging
-      console.log('Transaction details:', {
-        fee: transaction.fee,
-        operationsCount: transaction.operations.length,
-        networkPassphrase: transaction.networkPassphrase,
-        isFeebump: transaction instanceof FeeBumpTransaction
-      });
-      
-      if ('source' in transaction) {
-        console.log('Source account:', transaction.source);
-      }
-      if ('sequence' in transaction) {
-        console.log('Sequence number:', transaction.sequence);
-      }
-      
     } catch (xdrError) {
       console.error('=== XDR PARSING ERROR ===');
       console.error('Error type:', xdrError?.constructor?.name);
       console.error('Error message:', xdrError instanceof Error ? xdrError.message : 'Unknown error');
       console.error('Error stack:', xdrError instanceof Error ? xdrError.stack : 'No stack trace');
       
-      // Try to parse as different XDR types to diagnose the issue
       try {
-        console.log('Attempting to parse as TransactionEnvelope...');
         const envelope = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
-        console.log('Parsed as envelope successfully, but original parsing failed');
       } catch (envelopeError) {
         console.log('Also failed to parse as TransactionEnvelope:', envelopeError instanceof Error ? envelopeError.message : 'Unknown');
       }
@@ -76,7 +47,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
     
-    console.log('Submitting transaction to network...');
     const result = await server.sendTransaction(transaction);
 
     console.log('Transaction submission result:', {
@@ -95,17 +65,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (result.status === 'PENDING') {
-      // Poll for the transaction result with improved error handling
       console.log('Transaction pending, polling for result...');
       let getResult;
       let finalStatus = 'UNKNOWN';
       
       for (let i = 0; i < 10; i++) {
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
-        
+        await new Promise(resolve => setTimeout(resolve, 3000));
         try {
           getResult = await server.getTransaction(result.hash);
-          
           console.log(`Poll attempt ${i + 1}:`, {
             status: getResult.status,
             hash: result.hash
@@ -121,13 +88,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             hash: result.hash
           });
           
-          // If we get an XDR parsing error on getTransaction, the transaction likely succeeded
-          // but Horizon is having issues parsing the result. This is a known Horizon issue.
           if (pollError instanceof Error && pollError.message.includes('Bad union switch')) {
-            console.log('Horizon XDR parsing error detected - transaction likely succeeded but result cannot be parsed');
-            
-            // Return success with a warning about result parsing
-            return NextResponse.json({
+              return NextResponse.json({
               success: true,
               data: { 
                 hash: result.hash,
@@ -138,8 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             });
           }
           
-          // For other errors, continue polling
-          if (i === 9) { // Last attempt
+          if (i === 9) { 
             console.error('All poll attempts failed, returning timeout');
             break;
           }
@@ -161,40 +122,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (finalStatus === 'SUCCESS') {
         console.log('Transaction confirmed successfully');
         const returnValue = 'returnValue' in getResult ? getResult.returnValue : undefined;
-        
-        // Try to parse the contract execution result if it's from execute_user_arbitrage
         let contractResult = null;
         let contractStatus = 'SUCCESS';
         
         if (returnValue) {
           try {
-            console.log('Attempting to parse contract return value:', returnValue);
-            
-            // The returnValue should contain the TradeExecution result
-            // We need to extract the status field to check if the contract execution actually succeeded
-            if (returnValue && typeof returnValue === 'object' && 'status' in returnValue) {
+              if (returnValue && typeof returnValue === 'object' && 'status' in returnValue) {
               contractStatus = String(returnValue.status);
               contractResult = returnValue;
-              console.log('Extracted contract execution status:', contractStatus);
             } else if (returnValue && typeof returnValue === 'object') {
-              // Try to find status in nested structure
               for (const [key, value] of Object.entries(returnValue)) {
                 if (key === 'status') {
                   contractStatus = String(value);
                   contractResult = returnValue;
-                  console.log('Found contract status:', contractStatus);
                   break;
                 } else if (typeof value === 'object' && value && 'status' in value) {
                   contractStatus = String((value as any).status);
                   contractResult = returnValue;
-                  console.log('Found contract status in nested structure:', contractStatus);
                   break;
                 }
               }
             }
           } catch (parseError) {
             console.error('Failed to parse contract return value:', parseError);
-            // Continue with transaction success even if we can't parse the contract result
           }
         }
         

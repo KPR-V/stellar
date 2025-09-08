@@ -41,7 +41,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
   const { address, walletKit } = useWallet()
   const { showMessage } = useMessage()
 
-  // Reset vote message when proposal changes or modal opens/closes
   useEffect(() => {
     if (!isOpen || !proposal) {
       setVoteMessage('')
@@ -61,7 +60,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
   }
 
   const calculateVotePercentage = (yesVotes: string | number, noVotes: string | number, quorum: string | number) => {
-    // Convert from stroops to vote units (30 stroops = 1 vote)
     const yes = Number(yesVotes) / 30000000 || 0
     const no = Number(noVotes) / 30000000 || 0
     const total = yes + no
@@ -113,15 +111,11 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
       const result = await response.json()
 
       if (result.success && result.data?.transactionXdr) {
-        // Sign the transaction using wallet
-        console.log('Signing vote transaction with wallet...')
         const signedXdr = await walletKit.signTransaction(result.data.transactionXdr, {
           address: address,
           networkPassphrase: 'Test SDF Network ; September 2015',
         })
         
-        // Submit the signed transaction
-        console.log('Submitting signed vote transaction...')
         const submitResponse = await fetch('/api/dao', {
           method: 'POST',
           headers: {
@@ -140,7 +134,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
           setVoteMessage(successMessage)
           showMessage(successMessage)
           
-          // Refresh proposal data after successful vote
           setTimeout(async () => {
             if (onProposalUpdate) {
               try {
@@ -165,21 +158,21 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
             }
           }, 2000)
         } else {
-          setVoteMessage(`❌ Error submitting vote: ${submitResult.error || 'Transaction failed'}`)
+          setVoteMessage(`Error submitting vote: ${submitResult.error || 'Transaction failed'}`)
         }
       } else {
-        setVoteMessage(`❌ Error preparing vote: ${result.error || 'Unknown error'}`)
+        setVoteMessage(`Error preparing vote: ${result.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error voting:', error)
       if (error instanceof Error) {
         if (error.message.includes('User rejected')) {
-          setVoteMessage('❌ Vote cancelled by user.')
+          setVoteMessage('Vote cancelled by user.')
         } else {
-          setVoteMessage(`❌ Error: ${error.message}`)
+          setVoteMessage(`Error: ${error.message}`)
         }
       } else {
-        setVoteMessage('❌ Error submitting vote. Please try again.')
+        setVoteMessage('Error submitting vote. Please try again.')
       }
     } finally {
       setIsVoting(false)
@@ -241,8 +234,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
 
     return (
       <div className="space-y-4">
-        
-        
         <div className="bg-neutral-900/50 backdrop-blur-sm rounded-xl p-4 border border-white/10">
           <h3 className="text-lg font-normal text-white flex items-center gap-2 my-2">
           <div className="w-1 h-6 bg-blue-500 rounded-full"></div>
@@ -319,7 +310,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-black/80 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto faq-scrollbar font-raleway">
-        {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-white/10">
           <div className="flex-1">
             <h2 className="text-2xl font-semibold text-white mb-2">{proposal.title}</h2>
@@ -343,9 +333,7 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Description */}
           <div className="bg-neutral-900/50 backdrop-blur-sm rounded-xl p-4 border border-white/10">
             <h3 className="text-lg font-normal text-white mb-3 flex items-center gap-2">
               <div className="w-1 h-6 bg-green-500 rounded-full"></div>
@@ -354,10 +342,8 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
             <p className="text-gray-300 leading-relaxed">{proposal.description}</p>
           </div>
 
-          {/* Proposed Changes */}
           {renderProposedChanges()}
 
-          {/* Proposal Details Grid */}
           <div className="bg-neutral-900/50 backdrop-blur-sm rounded-xl p-4 border border-white/10">
             <h3 className="text-lg font-normal text-white mb-4 flex items-center gap-2">
               <div className="w-1 h-6 bg-purple-500 rounded-full"></div>
@@ -418,14 +404,12 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
             </div>
           </div>
 
-          {/* Voting Results */}
           <div className="bg-neutral-900/50 backdrop-blur-sm rounded-xl p-4 border border-white/10">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
               <div className="w-1 h-6 bg-yellow-500 rounded-full"></div>
               Voting Results
             </h3>
             <div className="space-y-4">
-              {/* Vote Statistics */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center py-3 px-4 bg-black/20 rounded-lg border border-white/5">
                   <div className="flex items-center justify-center gap-2 mb-1">
@@ -467,7 +451,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
                 </div>
               </div>
 
-              {/* Voting Buttons */}
               {proposal.status.toLowerCase() === 'active' && (
                 <div className="flex gap-4 pt-4">
                   <button
@@ -495,7 +478,6 @@ const ProposalModal: React.FC<ProposalModalProps> = ({
                 </div>
               )}
 
-              {/* Vote Message */}
               {voteMessage && (
                 <div className={`p-4 rounded-lg border ${
                   voteMessage.includes('Error') || voteMessage.includes('cancelled') 

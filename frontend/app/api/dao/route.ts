@@ -6,102 +6,58 @@ const RPC_URL = 'https://soroban-testnet.stellar.org'
 const DAO_CONTRACT = process.env.DAO_CONTRACT_ADDRESS!
 const NETWORK_PASSPHRASE = networks.testnet.networkPassphrase
 
-// ✅ Define proper types for simulation results
-interface SimulationResult {
-  result?: {
-    retval?: any;
-  };
-  [key: string]: any;
-}
-
-// ✅ Helper function to parse SCV retval data properly
 function parseRetvalData(retval: any): any[] {
   console.log('Parsing retval:', retval)
   
   if (!retval) return []
-  
-  // Check if it's a vector (list of proposals)
   if (retval._switch?.name === 'scvVec') {
-    console.log('Found scvVec, parsing array...')
     const vecData = retval._value || []
     return vecData.map((item: any) => parseScvItem(item))
   }
-  
-  // Check if it's a map (config data - means no proposals)
-  if (retval._switch?.name === 'scvMap') {
-    console.log('Found scvMap (config data) - no proposals exist yet')
-    return []
-  }
-  
-  // Check if it's void/empty
-  if (retval._switch?.name === 'scvVoid') {
-    console.log('Found scvVoid - empty result')
-    return []
-  }
-  
-  // Direct array
   if (Array.isArray(retval)) {
     return retval.map((item: any) => parseScvItem(item))
   }
-  
-  console.log('Unknown retval format:', retval._switch?.name)
-  console.log('Assuming no proposals exist, returning empty array')
   return []
 }
 
-// ✅ Helper to parse individual SCV items
 function parseScvItem(item: any): any {
   if (!item) return null
-  
   if (item._switch?.name === 'scvMap') {
     return parseScvMap(item._value || [])
   }
-  
   return item
 }
 
-// ✅ Helper to parse SCV maps into objects
 function parseScvMap(mapEntries: any[]): any {
   if (!Array.isArray(mapEntries)) return {}
-  
   const result: any = {}
-  
   mapEntries.forEach(entry => {
     if (!entry._attributes?.key || !entry._attributes?.val) return
-    
     const key = parseScvValue(entry._attributes.key)
     const value = parseScvValue(entry._attributes.val)
-    
     if (key) {
       result[key] = value
     }
   })
-  
   return result
 }
 
-// ✅ Helper to parse individual SCV values
 function parseScvValue(scv: any): any {
   if (!scv?._switch) return scv
-  
   switch (scv._switch.name) {
     case 'scvSymbol':
       if (scv._value?.data) {
         return Buffer.from(scv._value.data).toString('utf8')
       }
       return scv._value || ''
-      
     case 'scvString':
       return scv._value || ''
-      
     case 'scvU32':
     case 'scvI32':
       return Number(scv._value || 0)
-      
     case 'scvU64':
     case 'scvI64':
       return Number(scv._value || 0)
-      
     case 'scvI128':
       if (scv._value?._attributes) {
         const hi = BigInt(scv._value._attributes.hi?._value || 0)
@@ -109,30 +65,21 @@ function parseScvValue(scv: any): any {
         return Number((hi << 64n) + lo)
       }
       return 0
-      
     case 'scvBool':
       return Boolean(scv._value)
-      
     case 'scvAddress':
       return scv._value || ''
-      
     case 'scvVec':
       return (scv._value || []).map((item: any) => parseScvValue(item))
-      
     case 'scvMap':
       return parseScvMap(scv._value || [])
-      
     default:
       return scv._value
   }
 }
 
-// ✅ Updated formatProposal to handle the correct Proposal type from bindings
 function formatProposal(proposalData: any): any {
-  console.log('🔧 Formatting proposal data:', proposalData)
-  
-  // Helper function to convert Buffer to string
-  const bufferToString = (buffer: any): string => {
+    const bufferToString = (buffer: any): string => {
     if (!buffer) return ''
     if (typeof buffer === 'string') return buffer
     if (buffer.type === 'Buffer' && Array.isArray(buffer.data)) {
@@ -144,7 +91,6 @@ function formatProposal(proposalData: any): any {
     return String(buffer)
   }
 
-  // Helper function to extract string from array or buffer
   const extractString = (value: any): string => {
     if (!value) return ''
     if (Array.isArray(value) && value.length > 0) {
@@ -153,13 +99,10 @@ function formatProposal(proposalData: any): any {
     return bufferToString(value)
   }
 
-  // Helper function to extract address from ChildUnion
   const extractAddress = (addressObj: any): string => {
     if (!addressObj) return ''
     if (typeof addressObj === 'string') return addressObj
-    
     try {
-      // Handle Stellar address objects
       if (addressObj._value && Buffer.isBuffer(addressObj._value)) {
         return addressObj._value.toString('hex')
       }
@@ -193,21 +136,16 @@ function formatProposal(proposalData: any): any {
   }
 }
 
-
-// Keep all your existing helper functions unchanged...
 function sanitizeForJson(obj: any): any {
   if (obj === null || obj === undefined) {
     return obj;
   }
-  
   if (typeof obj === 'bigint') {
     return obj.toString();
   }
-  
   if (Array.isArray(obj)) {
     return obj.map(sanitizeForJson);
   }
-  
   if (typeof obj === 'object') {
     const sanitized: any = {};
     for (const [key, value] of Object.entries(obj)) {
@@ -215,7 +153,6 @@ function sanitizeForJson(obj: any): any {
     }
     return sanitized;
   }
-  
   return obj;
 }
 
@@ -229,13 +166,10 @@ function createProposalType(typeString: string): ProposalType {
     'EmergencyStop': { tag: 'EmergencyStop', values: undefined },
     'TransferAdmin': { tag: 'TransferAdmin', values: undefined },
   }
-  
   return validTypes[typeString] || validTypes['UpdateConfig']
 }
 
 function createArbitrageConfig(configData: any) {
-  console.log('🔧 Creating ArbitrageConfig with data:', configData)
-  
   const config = {
     enabled: Boolean(configData.enabled ?? true),
     min_profit_bps: Number(configData.min_profit_bps || 50),
@@ -243,15 +177,7 @@ function createArbitrageConfig(configData: any) {
     slippage_tolerance_bps: Number(configData.slippage_tolerance_bps || 100),
     max_gas_price: BigInt(String(configData.max_gas_price || "2000")),
     min_liquidity: BigInt(String(configData.min_liquidity || "1000000000")),
-  }
-  
-  console.log('✅ Created ArbitrageConfig:', {
-    ...config,
-    max_trade_size: config.max_trade_size.toString(),
-    max_gas_price: config.max_gas_price.toString(),
-    min_liquidity: config.min_liquidity.toString()
-  })
-  
+  }  
   return config
 }
 
@@ -302,9 +228,7 @@ function createTradingVenue(venueData: any) {
   }
 }
 
-function createProposalData(proposalType: string, customData?: any) {
-  console.log('🔧 Creating ProposalData for type:', proposalType, 'with data:', customData)
-  
+function createProposalData(proposalType: string, customData?: any) {  
   const baseData = {
     admin_address: undefined,
     config_data: undefined,
@@ -322,10 +246,8 @@ function createProposalData(proposalType: string, customData?: any) {
           ...baseData,
           config_data: arbitrageConfig
         }
-        console.log('✅ Created UpdateConfig ProposalData:', result)
         return result
       }
-      console.log('⚠️ No config_data provided for UpdateConfig')
       return baseData
       
     case 'AddTradingPair':
@@ -335,10 +257,8 @@ function createProposalData(proposalType: string, customData?: any) {
           ...baseData,
           pair_data: enhancedPair
         }
-        console.log('✅ Created AddTradingPair ProposalData:', result)
         return result
       }
-      console.log('⚠️ No pair_data provided for AddTradingPair')
       return baseData
       
     case 'AddTradingVenue':
@@ -348,10 +268,8 @@ function createProposalData(proposalType: string, customData?: any) {
           ...baseData,
           venue_data: venue
         }
-        console.log('✅ Created AddTradingVenue ProposalData:', result)
         return result
       }
-      console.log('⚠️ No venue_data provided for AddTradingVenue')
       return baseData
       
     case 'TransferAdmin':
@@ -360,10 +278,8 @@ function createProposalData(proposalType: string, customData?: any) {
           ...baseData,
           admin_address: customData.admin_address
         }
-        console.log('✅ Created TransferAdmin ProposalData:', result)
         return result
       }
-      console.log('⚠️ No admin_address provided for TransferAdmin')
       return baseData
       
     case 'PausePair':
@@ -372,19 +288,14 @@ function createProposalData(proposalType: string, customData?: any) {
           ...baseData,
           symbol_data: customData.symbol_data
         }
-        console.log('✅ Created PausePair ProposalData:', result)
         return result
       }
-      console.log('⚠️ No symbol_data provided for PausePair')
       return baseData
       
     case 'UpdateRiskManager':
     case 'EmergencyStop':
-      console.log('✅ Created generic ProposalData for:', proposalType)
       return baseData
-      
     default:
-      console.log('⚠️ Unknown proposal type:', proposalType)
       return baseData
   }
 }
@@ -438,34 +349,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-
-// ✅ FIXED: Enhanced createProposal for ARBITRAGE BOT updates
 async function createProposal(params: any): Promise<NextResponse> {
   const { proposer, title, description, proposal_type, proposal_data } = params
   try {
-    console.log('📝 Creating proposal with params:', {
-      proposer,
-      title,
-      description,
-      proposal_type,
-      proposal_data
-    })
-
-    // ✅ Enhanced input validation
     if (!title || title.trim().length === 0) {
       return NextResponse.json({ 
         success: false, 
         error: 'Title is required and cannot be empty' 
       })
     }
-    
     if (title.length > 100) {
       return NextResponse.json({ 
         success: false, 
         error: 'Title cannot exceed 100 characters' 
       })
     }
-    
     if (description && description.length > 1000) {
       return NextResponse.json({ 
         success: false, 
@@ -473,7 +371,6 @@ async function createProposal(params: any): Promise<NextResponse> {
       })
     }
 
-    // ✅ Validate proposal type
     const validTypes = ['UpdateConfig', 'AddTradingPair', 'AddTradingVenue', 'PausePair', 'UpdateRiskManager', 'EmergencyStop', 'TransferAdmin']
     if (!validTypes.includes(proposal_type)) {
       return NextResponse.json({
@@ -491,19 +388,7 @@ async function createProposal(params: any): Promise<NextResponse> {
 
     const proposalType = createProposalType(proposal_type)
     const fullProposalData = createProposalData(proposal_type, proposal_data)
-
-    console.log('🔧 Processed proposal data:', {
-      proposer,
-      proposal_type: proposalType,
-      title: title.trim(),
-      description: (description || '').trim(),
-      proposal_data: fullProposalData
-    })
-
-    // ✅ Build transaction for signing - follow contract API pattern
     const server = new SorobanRpc.Server(RPC_URL)
-    
-    console.log('⚙️ Calling contract create_proposal function...')
     const result = await client.create_proposal({
       proposer,
       proposal_type: proposalType,
@@ -511,18 +396,10 @@ async function createProposal(params: any): Promise<NextResponse> {
       description: (description || '').trim(),
       proposal_data: fullProposalData,
     }, { simulate: true })
-
-    console.log('📋 Contract call result:', result)
     
-    const initialTx = result.toXDR()
-    console.log('🔗 Initial transaction XDR length:', initialTx.length)
-    
+    const initialTx = result.toXDR()    
     const transaction = TransactionBuilder.fromXDR(initialTx, networks.testnet.networkPassphrase)
     const preparedTransaction = await server.prepareTransaction(transaction)
-
-    console.log('✅ Transaction prepared successfully for signing')
-    console.log('🎯 Transaction hash (before signing):', transaction.hash().toString('hex'))
-
     return NextResponse.json({
       success: true,
       data: { 
@@ -533,11 +410,8 @@ async function createProposal(params: any): Promise<NextResponse> {
     })
 
   } catch (error) {
-    console.error('❌ Create proposal error:', error)
-    
-    // Enhanced error handling
+    console.error('Create proposal error:', error)
     let errorMessage = 'Failed to prepare create proposal'
-    
     if (error instanceof Error) {
       if (error.message.includes('Must stake KALE')) {
         errorMessage = 'You must stake KALE tokens before creating proposals'
@@ -560,7 +434,6 @@ async function createProposal(params: any): Promise<NextResponse> {
   }
 }
 
-// ✅ Keep all other functions unchanged
 async function cancelProposal(params: any): Promise<NextResponse> {
   const { proposer, proposal_id } = params
   try {
@@ -596,10 +469,7 @@ async function cancelProposal(params: any): Promise<NextResponse> {
 async function finalizeProposal(params: any): Promise<NextResponse> {
   const { proposal_id } = params
   try {
-    const server = new SorobanRpc.Server(RPC_URL)
-    
-    console.log('Finalizing proposal for ID:', proposal_id)
-    
+    const server = new SorobanRpc.Server(RPC_URL)    
     const client = new Client({
       contractId: DAO_CONTRACT,
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -614,11 +484,8 @@ async function finalizeProposal(params: any): Promise<NextResponse> {
       result.toXDR(),
       NETWORK_PASSPHRASE
     )
-
     const preparedTx = await server.prepareTransaction(transaction)
     const transactionXdr = preparedTx.toXDR()
-
-    console.log('Finalize proposal transaction prepared successfully')
     return NextResponse.json({ success: true, data: { transactionXdr } })
   } catch (error) {
     console.error('Finalize proposal error:', error)
@@ -629,10 +496,7 @@ async function finalizeProposal(params: any): Promise<NextResponse> {
 async function executeProposal(params: any): Promise<NextResponse> {
   const { executor, proposal_id } = params
   try {
-    const server = new SorobanRpc.Server(RPC_URL)
-    
-    console.log('Executing proposal for ID:', proposal_id)
-    
+    const server = new SorobanRpc.Server(RPC_URL)    
     const client = new Client({
       contractId: DAO_CONTRACT,
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -649,11 +513,9 @@ async function executeProposal(params: any): Promise<NextResponse> {
       result.toXDR(),
       NETWORK_PASSPHRASE
     )
-
     const preparedTx = await server.prepareTransaction(transaction)
     const transactionXdr = preparedTx.toXDR()
 
-    console.log('Execute proposal transaction prepared successfully')
     return NextResponse.json({ success: true, data: { transactionXdr } })
   } catch (error) {
     console.error('Execute proposal error:', error)
@@ -664,10 +526,7 @@ async function executeProposal(params: any): Promise<NextResponse> {
 async function voteOnProposal(params: any): Promise<NextResponse> {
   const { voter, proposal_id, vote_yes } = params
   try {
-    const server = new SorobanRpc.Server(RPC_URL)
-    
-    console.log('Voting on proposal ID:', proposal_id, 'Vote:', vote_yes)
-    
+    const server = new SorobanRpc.Server(RPC_URL)    
     const client = new Client({
       contractId: DAO_CONTRACT,
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -685,11 +544,9 @@ async function voteOnProposal(params: any): Promise<NextResponse> {
       result.toXDR(),
       NETWORK_PASSPHRASE
     )
-
     const preparedTx = await server.prepareTransaction(transaction)
     const transactionXdr = preparedTx.toXDR()
 
-    console.log('Vote transaction prepared successfully')
     return NextResponse.json({ success: true, data: { transactionXdr } })
   } catch (error) {
     console.error('Vote error:', error)
@@ -699,10 +556,9 @@ async function voteOnProposal(params: any): Promise<NextResponse> {
     
     if (error instanceof Error) {
       const errorStr = error.message
-      
       if (errorStr.includes('InvalidAction') || errorStr.includes('UnreachableCodeReached')) {
         if (errorStr.includes('vote')) {
-          errorMessage = 'Unable to vote on this proposal. You may have already voted, the voting period may have ended, or you need to stake KALE tokens first.'
+          errorMessage = 'Unable to vote on this proposal.'
           errorType = 'VOTE_REJECTED'
         }
       } else if (errorStr.includes('insufficient')) {
@@ -734,13 +590,6 @@ async function stakeKale(params: any): Promise<NextResponse> {
     })
 
     const scaledAmount = BigInt(Math.floor(Number(amount) * 10000000))
-
-    console.log('Preparing stake_kale transaction:', {
-      staker,
-      amount: amount,
-      scaledAmount: scaledAmount.toString()
-    })
-
     const result = await client.stake_kale({
       staker,
       amount: scaledAmount,
@@ -774,13 +623,6 @@ async function unstakeKale(params: any): Promise<NextResponse> {
     })
 
     const scaledAmount = BigInt(Math.floor(Number(amount) * 10000000))
-
-    console.log('Preparing unstake_kale transaction:', {
-      staker,
-      amount: amount,
-      scaledAmount: scaledAmount.toString()
-    })
-
     const result = await client.unstake_kale({
       staker,
       amount: scaledAmount,
@@ -829,7 +671,6 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
       networkPassphrase: NETWORK_PASSPHRASE,
       rpcUrl: RPC_URL,
     })
-
     const result = await client.get_stake_info({ user }, { simulate: true })
     
     if (!result.simulation) {
@@ -840,7 +681,6 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
     if (!sim.result || !sim.result.retval) {
       return NextResponse.json({ success: true, data: { stakeInfo: null } })
     }
-    
     const scVal = sim.result.retval
     
     if (scVal.switch().name === 'scvVoid') {
@@ -853,9 +693,7 @@ async function getStakeInfo(params: any): Promise<NextResponse> {
         const stakeInfo = sanitizeForJson(nativeValue)
         return NextResponse.json({ success: true, data: { stakeInfo } })
       }
-    } catch (scValError) {
-      console.log('scValToNative failed as expected for Option<Map>, attempting manual decode')
-      
+    } catch (scValError) {      
       if (scVal.switch().name === 'scvMap') {
         const map = scVal.map()
         const stakeInfo: any = {}
@@ -914,7 +752,6 @@ async function getDaoConfig(): Promise<NextResponse> {
     })
 
     const result = await client.get_dao_config({ simulate: true })
-    
     const sanitizedConfig = sanitizeForJson(result.result)
     
     return NextResponse.json({ 
@@ -968,9 +805,7 @@ async function getUserVote(params: any): Promise<NextResponse> {
       user, 
       proposal_id: BigInt(proposal_id) 
     }, { simulate: true })
-    
     const vote = sanitizeForJson(result.result)
-    
     return NextResponse.json({ success: true, data: { vote } })
   } catch (error) {
     console.error('Get user vote error:', error)
@@ -987,23 +822,15 @@ async function getAllProposals(): Promise<NextResponse> {
     })
 
     const result = await client.get_all_proposals({ simulate: true })
-    console.log('📋 Raw get_all_proposals result:', result)
-    
-    // Extract the actual result value - check multiple possible locations
     let retval = null
     if (result.simulation && 'result' in result.simulation && result.simulation.result) {
       retval = result.simulation.result.retval
     } else if (result.result) {
       retval = result.result
     }
-    
-    console.log('📋 Using retval:', retval)
-    
-    const rawProposals = parseRetvalData(retval)
-    console.log('📋 Parsed proposals data:', rawProposals)
-    
+        
+    const rawProposals = parseRetvalData(retval)    
     const proposals = rawProposals.map((proposal: any) => formatProposal(proposal))
-    console.log('✅ Formatted proposals:', proposals)
     
     return NextResponse.json({ 
       success: true, 
@@ -1015,9 +842,7 @@ async function getAllProposals(): Promise<NextResponse> {
   } catch (error) {
     console.error('Get all proposals error:', error)
     
-    // If it's a parsing error due to no proposals, return empty array
     if (error instanceof Error && error.message.includes('ScSpecType')) {
-      console.log('📋 No proposals found, returning empty array')
       return NextResponse.json({ 
         success: true, 
         data: { 
@@ -1042,10 +867,7 @@ async function getActiveProposals(): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     })
 
-    const result = await client.get_active_proposals({ simulate: true })
-    console.log('📋 Raw get_active_proposals result:', result)
-    
-    // Extract the actual result value - check multiple possible locations
+    const result = await client.get_active_proposals({ simulate: true })    
     let retval = null
     if (result.simulation && 'result' in result.simulation && result.simulation.result) {
       retval = result.simulation.result.retval
@@ -1053,13 +875,8 @@ async function getActiveProposals(): Promise<NextResponse> {
       retval = result.result
     }
     
-    console.log('📋 Using retval:', retval)
-    
     const rawProposals = parseRetvalData(retval)
-    console.log('📋 Parsed active proposals data:', rawProposals)
-    
     const proposals = rawProposals.map((proposal: any) => formatProposal(proposal))
-    console.log('✅ Formatted active proposals:', proposals)
     
     return NextResponse.json({ 
       success: true, 
@@ -1071,9 +888,7 @@ async function getActiveProposals(): Promise<NextResponse> {
   } catch (error) {
     console.error('Get active proposals error:', error)
     
-    // If it's a parsing error due to no proposals, return empty array
     if (error instanceof Error && error.message.includes('ScSpecType')) {
-      console.log('📋 No active proposals found, returning empty array')
       return NextResponse.json({ 
         success: true, 
         data: { 
@@ -1092,7 +907,6 @@ async function getActiveProposals(): Promise<NextResponse> {
 
 async function getProposal(params: any): Promise<NextResponse> {
   const { proposal_id } = params
-  
   if (!proposal_id && proposal_id !== 0) {
     return NextResponse.json({ success: false, error: 'proposal_id is required' }, { status: 400 })
   }
@@ -1104,19 +918,13 @@ async function getProposal(params: any): Promise<NextResponse> {
       rpcUrl: RPC_URL,
     })
 
-    const result = await client.get_proposal({ proposal_id: BigInt(proposal_id) }, { simulate: true })
-    console.log('📋 Raw get_proposal result:', result)
-    
-    // Extract the actual result value
+    const result = await client.get_proposal({ proposal_id: BigInt(proposal_id) }, { simulate: true })    
     let retval = null
     if (result.simulation && 'result' in result.simulation && result.simulation.result) {
       retval = result.simulation.result.retval
     } else if (result.result) {
       retval = result.result
-    }
-    
-    console.log('📋 Using retval:', retval)
-    
+    }    
     if (!retval) {
       return NextResponse.json({ 
         success: false, 
@@ -1124,11 +932,8 @@ async function getProposal(params: any): Promise<NextResponse> {
       }, { status: 404 })
     }
     
-    const proposalData = parseScvItem(retval)
-    console.log('📋 Parsed proposal data:', proposalData)
-    
+    const proposalData = parseScvItem(retval)    
     const proposal = formatProposal(proposalData)
-    console.log('✅ Formatted proposal:', proposal)
     
     return NextResponse.json({ 
       success: true, 
@@ -1153,21 +958,14 @@ async function getProposal(params: any): Promise<NextResponse> {
 
 async function submitSigned(params: any): Promise<NextResponse> {
   let { signedXdr } = params
-  
-
   if (!signedXdr) {
     return NextResponse.json({ success: false, error: 'signedXdr is required' }, { status: 400 })
   }
-  
-
   if (typeof signedXdr === 'object' && signedXdr.signedTxXdr) {
-    console.log('📦 Extracting XDR from wallet object format')
     signedXdr = signedXdr.signedTxXdr
   }
-  
-
   if (typeof signedXdr !== 'string') {
-    console.error('❌ Invalid XDR format:', typeof signedXdr, signedXdr)
+    console.error('Invalid XDR format:', typeof signedXdr, signedXdr)
     return NextResponse.json({ 
       success: false, 
       error: 'Invalid XDR format - expected string, received ' + typeof signedXdr,
@@ -1175,23 +973,13 @@ async function submitSigned(params: any): Promise<NextResponse> {
     }, { status: 400 })
   }
   
-  console.log('📝 Processing signed XDR:', {
-    length: signedXdr.length,
-    starts_with: signedXdr.substring(0, 20),
-    type: typeof signedXdr
-  })
-  
   try {
-    const server = new SorobanRpc.Server(RPC_URL, { allowHttp: true })
-    
-  
+    const server = new SorobanRpc.Server(RPC_URL, { allowHttp: true })  
     let transaction: any
-    
     try {
       transaction = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE)
-      console.log('✅ Successfully parsed XDR as TransactionEnvelope')
     } catch (parseError) {
-      console.error('❌ Failed to parse XDR:', parseError)
+      console.error('Failed to parse XDR:', parseError)
       return NextResponse.json({ 
         success: false, 
         error: 'Failed to parse signed transaction XDR',
@@ -1203,24 +991,9 @@ async function submitSigned(params: any): Promise<NextResponse> {
       }, { status: 400 })
     }
     
-    console.log('🚀 Submitting transaction with hash:', transaction.hash().toString('hex'))
-    console.log('📊 Transaction details:', {
-      source: transaction.source,
-      fee: transaction.fee,
-      operationsCount: transaction.operations.length
-    })
-    
     const sendResponse = await server.sendTransaction(transaction)
-    
-    console.log('📤 Transaction submission response:', {
-      hash: sendResponse.hash,
-      status: sendResponse.status,
-      latestLedger: sendResponse.latestLedger
-    })
-    
     if (sendResponse.status === 'ERROR') {
-      console.error('❌ Transaction submission error:', sendResponse)
-      
+      console.error('Transaction submission error:', sendResponse)
       let errorMessage = 'Transaction failed during execution'
       const errorDetails: any = {
         hash: sendResponse.hash,
@@ -1232,9 +1005,7 @@ async function submitSigned(params: any): Promise<NextResponse> {
       if (sendResponse.errorResult) {
         try {
           const errorResult = sendResponse.errorResult
-          console.error('📊 Detailed error result:', errorResult)
-          
-       
+          console.error('Detailed error result:', errorResult)
           if (errorResult.result?.name === 'txFailed') {
             const opResults = errorResult.result().results()
             if (opResults && opResults.length > 0) {
@@ -1271,10 +1042,6 @@ async function submitSigned(params: any): Promise<NextResponse> {
           const getResponse = await server.getTransaction(sendResponse.hash)
           
           if (getResponse.status === 'SUCCESS') {
-            console.log('✅ Transaction successful:', {
-              hash: sendResponse.hash,
-              ledger: getResponse.ledger
-            })
             return NextResponse.json({ 
               success: true, 
               data: { 
@@ -1285,18 +1052,16 @@ async function submitSigned(params: any): Promise<NextResponse> {
               } 
             })
           } else if (getResponse.status === 'FAILED') {
-            console.error('❌ Transaction failed after pending:', getResponse)
+            console.error('Transaction failed after pending:', getResponse)
             return NextResponse.json({ 
               success: false, 
               error: 'Transaction failed during execution', 
               details: getResponse 
             }, { status: 500 })
           }
-          
           attempts++
         } catch (error) {
           if (attempts === maxAttempts - 1) {
-            console.log('⏰ Transaction taking longer than expected')
             return NextResponse.json({ 
               success: true, 
               data: { 
@@ -1311,7 +1076,6 @@ async function submitSigned(params: any): Promise<NextResponse> {
       }
     }
 
-    console.log('📤 Transaction submitted successfully:', sendResponse.hash)
     return NextResponse.json({ 
       success: true, 
       data: { 
@@ -1323,9 +1087,7 @@ async function submitSigned(params: any): Promise<NextResponse> {
     
   } catch (error) {
     console.error('Submit transaction error:', error)
-    
     let errorMessage = 'Failed to submit transaction'
-    
     if (error instanceof Error) {
       if (error.message.includes('insufficient')) {
         errorMessage = 'Insufficient balance for transaction fees'

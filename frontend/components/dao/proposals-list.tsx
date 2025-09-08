@@ -18,7 +18,7 @@ interface Proposal {
   quorum_required: string | number
   executed_at?: number | null
   cancelled_at?: number | null
-  proposal_data?: any // Add proposal_data to interface
+  proposal_data?: any 
 }
 
 interface ProposalsListProps {
@@ -57,10 +57,7 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
       })
 
       const result = await response.json()
-      console.log(`📋 ${action} result:`, result)
-
       if (result.success) {
-        console.log('📋 Received proposals:', result.data.proposals)
         const proposalsWithDefaults = (result.data.proposals || []).map((proposal: any, index: number) => ({
           id: proposal.id ?? index,
           proposer: proposal.proposer ?? '',
@@ -77,9 +74,8 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
           quorum_required: proposal.quorum_required ?? '0',
           executed_at: proposal.executed_at ?? null,
           cancelled_at: proposal.cancelled_at ?? null,
-          proposal_data: proposal.proposal_data ?? null, // Include proposal_data
+          proposal_data: proposal.proposal_data ?? null,
         }))
-        console.log('📋 Proposals with defaults:', proposalsWithDefaults)
         setProposals(proposalsWithDefaults)
       } else {
         setError(result.error || 'Failed to fetch proposals')
@@ -92,7 +88,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
     }
   }
 
-  // Fetch proposals when component mounts, refreshKey changes, or toggle changes
   useEffect(() => {
     fetchProposals()
   }, [refreshKey, showActiveOnly])
@@ -118,23 +113,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Active':
-        return 'text-green-400'
-      case 'Passed':
-        return 'text-blue-400'
-      case 'Failed':
-        return 'text-red-400'
-      case 'Executed':
-        return 'text-purple-400'
-      case 'Cancelled':
-        return 'text-gray-400'
-      default:
-        return 'text-white'
-    }
-  }
-
   const formatDate = (timestamp: number | undefined | null) => {
     if (!timestamp || timestamp === 0) return 'N/A'
     try {
@@ -142,12 +120,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
     } catch (error) {
       return 'Invalid Date'
     }
-  }
-
-  const truncateText = (text: string | undefined | null, maxLength: number = 100) => {
-    if (!text || typeof text !== 'string') return ''
-    if (text.length <= maxLength) return text
-    return text.substring(0, maxLength) + '...'
   }
 
   if (loading) {
@@ -229,7 +201,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
           </div>
         </div>
         <div className="text-center py-12">
-          <div className="text-red-400 mb-4">❌ {error}</div>
           <button
             onClick={fetchProposals}
             className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg font-raleway transition-all duration-300"
@@ -243,7 +214,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
 
   return (
     <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl p-8 shadow-2xl">
-      {/* Header with Toggle */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-white text-xl font-semibold font-raleway">
           {showActiveOnly ? 'Active Proposals' : 'All Proposals'} ({proposals.length})
@@ -280,7 +250,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
         </div>
       </div>
 
-      {/* Proposals Grid */}
       {proposals.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-white/60 mb-4 font-raleway">
@@ -300,7 +269,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
               key={proposal.id}
               className="bg-black/30 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:border-white/20 transition-all duration-300 group"
             >
-              {/* Proposal Header */}
               <div className="mb-4">
                 <h3 className="text-white font-semibold font-raleway text-lg mb-2 group-hover:text-white/90 line-clamp-1">
                   {proposal.title || 'Untitled Proposal'}
@@ -313,7 +281,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
                 </span>
               </div>
 
-              {/* Dates and Voting Info */}
               <div className="space-y-2 mb-4">
                 <div className="text-xs text-white/50 font-raleway">
                   Created: {formatDate(proposal.created_at || 0)}
@@ -327,7 +294,6 @@ const ProposalsList: React.FC<ProposalsListProps> = ({
                 </div>
               </div>
 
-              {/* View Proposal Button */}
               <button
                 onClick={() => onViewProposal?.(proposal)}
                 className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-white/30 px-4 py-3 rounded-lg text-sm font-raleway transition-all duration-300"

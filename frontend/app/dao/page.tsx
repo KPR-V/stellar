@@ -32,17 +32,17 @@ const Page = () => {
   
   const handleStakeUpdate = () => {
     setRefreshKey(prev => prev + 1)
-    setHasStake(true) // Assume user has stake after update
+    setHasStake(true)
   }
 
   const handleProposalCreated = () => {
-    setRefreshKey(prev => prev + 1) // Refresh the proposals list
-    setShowCreateForm(false) // Hide the form after creation
+    setRefreshKey(prev => prev + 1) 
+    setShowCreateForm(false)
   }
 
   const handleProposalUpdated = (updatedProposal: any) => {
     refreshProposal(updatedProposal)
-    setRefreshKey(prev => prev + 1) // Also refresh the list
+    setRefreshKey(prev => prev + 1)
   }
 
   return (
@@ -50,9 +50,7 @@ const Page = () => {
       <AnimatedBackground />
       <div className="relative z-10">
         <main className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-          {/* Header Section */}
           <div className="flex items-center justify-between relative mb-12">
-            {/* Left: CX Logo */}
             <div className="flex-shrink-0 items-center">
               <div className="text-4xl lg:text-6xl font-thin tracking-tighter font-italianno"
                    style={{WebkitTextStroke: '1px white', WebkitTextFillColor: 'transparent', color: 'transparent'}}>
@@ -60,12 +58,10 @@ const Page = () => {
               </div>
             </div>
 
-            {/* Center: DAO Governance Title */}
             <h1 className="text-white text-2xl md:text-3xl font-semibold font-raleway absolute left-1/2 transform -translate-x-1/2">
               DAO Governance
             </h1>
 
-            {/* Right: Action Buttons */}
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowCreateForm(true)}
@@ -76,9 +72,6 @@ const Page = () => {
                   <div className="absolute -bottom-1 left-0 right-0 h-[1px] w-0 bg-white/60 transition-all duration-300 ease-out group-hover:w-full"></div>
                 </span>
               </button>
-              
-            
-              
                <button
                 onClick={() => setIsStakeOpen(true)}
                 className="relative bg-transparent text-white font-raleway text-xs lg:text-sm px-2 lg:px-3 py-2 transition-all duration-300 ease-out group whitespace-nowrap"
@@ -102,12 +95,9 @@ const Page = () => {
               <div className="ml-2 lg:ml-4 flex-shrink-0">
                 <StellarConnect />
               </div>
-
-             
             </div>
           </div>
 
-          {/* Proposals List */}
           <ProposalsList 
             refreshKey={refreshKey}
             onViewProposal={openProposalModal}
@@ -115,7 +105,6 @@ const Page = () => {
         </main>
       </div>
 
-      {/* Modals */}
       <ProposalCreationForm 
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
@@ -136,7 +125,6 @@ const Page = () => {
         onStakeUpdate={handleStakeUpdate}
       />
 
-      {/* Message Component */}
       <Message 
         message={messageState.message}
         isVisible={messageState.isVisible}

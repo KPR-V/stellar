@@ -103,7 +103,6 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
     })
 
     const initCheckResult = await initCheckResponse.json()
-    
     if (initCheckResult.success && !initCheckResult.data.isInitialized) {
       alert('Your account needs to be initialized first. Please initialize your account before depositing funds.')
       setIsLoading(false)
@@ -111,7 +110,6 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
     }
 
     const amountInStroops = Math.floor(parseFloat(depositForm.amount) * 10000000).toString()
-
     const requestBody = {
       action: 'deposit_user_funds',
       userAddress: address,
@@ -132,7 +130,6 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
     })
 
     const result = await response.json()
-
     if (result.success && result.data.transactionXdr) {
       try {
           const signed = await walletKit.signTransaction(result.data.transactionXdr, {
@@ -156,14 +153,11 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
         })
 
         const submitResult = await submitResponse.json()
-
         if (submitResult.success) {
-          console.log('Transaction confirmed:', submitResult.data)
           showMessage(`Your Deposit was successfully executed! ${depositForm.amount} ${depositForm.asset} deposited successfully.`)
           setDepositForm({ ...depositForm, amount: '' })
         } else {
           console.error('Transaction failed:', submitResult)
-          
           let errorMessage = submitResult.error || 'Transaction failed'
           if (errorMessage.includes('not initialized')) {
             errorMessage = 'Account not initialized. Please initialize your account first.'
@@ -172,7 +166,6 @@ const ActivityTab: React.FC<ActivityTabProps> = ({ showMessage }) => {
           } else if (errorMessage.includes('auth')) {
             errorMessage = 'Authentication failed. Please check your wallet connection.'
           }
-          
           alert(`Transaction failed: ${errorMessage}`)
           if (submitResult.details) {
             console.error('Detailed error information:', submitResult.details)

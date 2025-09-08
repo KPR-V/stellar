@@ -23,7 +23,6 @@ const NavBarPage = () => {
   return (
     <>
       <nav className="h-16 md:h-20 lg:h-24 w-full flex items-center justify-between px-4 sm:px-6 lg:px-16 font-raleway relative">
-        {/* Mobile Menu Button */}
         <div className="md:hidden flex-shrink-0">
           <button
             onClick={toggleMobileMenu}
@@ -79,7 +78,6 @@ const NavBarPage = () => {
           </div>
         </div>
 
-        {/* Mobile Logo */}
         <div className="md:hidden flex-1 flex justify-center items-center opacity-0">
           <div className="text-3xl font-thin tracking-tighter font-italianno"
                style={{
@@ -91,13 +89,11 @@ const NavBarPage = () => {
           </div>
         </div>
 
-        {/* Mobile StellarConnect */}
         <div className="md:hidden flex-shrink-0">
           <StellarConnect />
         </div>
       </nav>
 
-      {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 bg-black/80 backdrop-blur-md z-40">
           <div className="flex flex-col h-full pt-20 px-6">

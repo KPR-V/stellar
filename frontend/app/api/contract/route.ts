@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '../../../bindings/src'; 
 import { Address, Networks } from '@stellar/stellar-sdk';
-import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, scValToNative, nativeToScVal, xdr,Contract, 
-  Operation   } from '@stellar/stellar-sdk';
+import { SorobanRpc, Address as StellarAddress,TransactionBuilder,Asset, nativeToScVal,Contract } from '@stellar/stellar-sdk';
 
 
 const safeStringify = (obj: any) => {
@@ -23,7 +22,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { action, userAddress, ...params } = body;
 
     if (action === 'initialize_user_account') {
-      return await initializeUserAccountWithBindings(userAddress, params.initialConfig, params.riskLimits);
+      return await initializeUserAccount(userAddress, params.initialConfig, params.riskLimits);
     }
 
     if (action === 'get_user_config') {
@@ -100,7 +99,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 
-async function initializeUserAccountWithBindings(
+async function initializeUserAccount(
   userAddress: string,
   initialConfig: any,
   riskLimits: any
@@ -135,7 +134,6 @@ async function initializeUserAccountWithBindings(
     });
 
     const initialTx = result.toXDR();
-    
     const transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
     const preparedTransaction = await server.prepareTransaction(transaction);
 
@@ -299,19 +297,13 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
     });
 
     const result = await client.get_user_balances({user: userAddress}, {simulate: true});
-    console.log('Raw contract result for balances:', safeStringify(result.result));
     const balancesWithStrings: { [key: string]: string } = {};
         
     if (result.result && typeof result.result === 'object') {
-      console.log('Object.entries(result.result):', Object.entries(result.result));
             for (const [key, value] of Object.entries(result.result)) {
-            console.log(`Processing entry: key="${key}", value="${value}", value type=${typeof value}`);
         
         if (Array.isArray(value) && value.length === 2) {
-          console.log('Detected array format with [tokenAddress, balance]');
-          const [tokenAddress, balance] = value;
-          console.log(`Extracted from array: tokenAddress="${tokenAddress}", balance="${balance}", balance type=${typeof balance}`);
-          
+          const [tokenAddress, balance] = value;          
           let balanceStr = '';
           if (typeof balance === 'bigint') {
             balanceStr = balance.toString();
@@ -321,17 +313,14 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
             balanceStr = String(balance);
           }
           
-          console.log(`Setting balance from array: ${tokenAddress} = ${balanceStr}`);
           balancesWithStrings[tokenAddress] = balanceStr;
           
         } else if (typeof value === 'string' && value.includes(',')) {
           const [tokenAddress, balance] = value.split(',');
           if (tokenAddress && balance) {
-            console.log(`Extracted from string: tokenAddress="${tokenAddress}", balance="${balance}"`);
             balancesWithStrings[tokenAddress] = balance;
           }
         } else {
-          console.log('Detected normal Map format');
           let balanceStr = '';
           if (typeof value === 'bigint') {
             balanceStr = value.toString();
@@ -343,46 +332,31 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
             balanceStr = String(value);
           }
           
-          console.log(`Setting balance from normal format: ${key} = ${balanceStr}`);
           balancesWithStrings[key] = balanceStr;
         }
       }
     }
-
-    console.log('Processed balances:', balancesWithStrings);
-
     
     const tokenPrices: { [key: string]: number } = {};
     const balancesWithUsdValues: { [key: string]: { balance: string, usdValue: number, price: number } } = {};
-    
-    console.log('Fetching USD prices for tokens...');
-    console.log('Available balances:', balancesWithStrings);
-    
+        
     for (const [tokenAddress, balance] of Object.entries(balancesWithStrings)) {
       try {
         let usdPrice = 0;
-        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7));
-        
-        const tokenInfo = getTokenSymbolForOracle(tokenAddress);
-        
-        console.log(`Processing token: ${tokenAddress} -> ${tokenInfo.symbol}, balance: ${balanceValue}`);
-        
+        const balanceValue = parseFloat(normalizeOraclePrice(balance, 7));      
+        const tokenInfo = getTokenSymbolForOracle(tokenAddress);        
         if (tokenInfo.symbol !== 'Unknown') {
-          console.log(`Fetching price for ${tokenInfo.symbol} (${tokenAddress})`);
           usdPrice = await fetchTokenUsdPrice(tokenInfo.symbol, tokenAddress);
         }
         
-        const usdValue = balanceValue * usdPrice;
-        
+        const usdValue = balanceValue * usdPrice;        
         tokenPrices[tokenAddress] = usdPrice;
         balancesWithUsdValues[tokenAddress] = {
           balance: normalizeOraclePrice(balance, 7), 
           usdValue: usdValue,
           price: usdPrice
         };
-        
-        console.log(`Token ${tokenInfo.symbol}: balance=${balanceValue.toFixed(4)}, price=$${usdPrice.toFixed(6)}, value=$${usdValue.toFixed(2)}`);
-        
+                
       } catch (priceError) {
         console.warn(`Failed to fetch price for ${tokenAddress}:`, priceError);
         const balanceValue = parseFloat(normalizeOraclePrice(balance, 7));
@@ -403,8 +377,6 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
             fallbackPrice = 1.0; 
         }
         
-        console.log(`Using fallback price for ${tokenInfo.symbol}: $${fallbackPrice}`);
-        
         tokenPrices[tokenAddress] = fallbackPrice;
         balancesWithUsdValues[tokenAddress] = {
           balance: normalizeOraclePrice(balance, 7),
@@ -413,17 +385,11 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
         };
       }
     }
-
-    
+  
     let totalUsdValue = 0;
-    console.log('Calculating total portfolio value...');
     for (const [tokenAddress, data] of Object.entries(balancesWithUsdValues)) {
-      console.log(`Adding to portfolio: ${tokenAddress} = $${data.usdValue.toFixed(2)}`);
       totalUsdValue += data.usdValue;
     }
-
-    console.log('Final calculated portfolio USD value:', totalUsdValue);
-    console.log('Balances with USD values:', balancesWithUsdValues);
 
     return NextResponse.json({
       success: true,
@@ -448,9 +414,7 @@ async function getUserBalances(userAddress: string): Promise<NextResponse> {
 
 function getTokenSymbolForOracle(tokenAddress: string): { symbol: string, name: string } {
   const tokenMap: { [key: string]: { symbol: string, name: string } } = {
-    
     'native': { symbol: 'XLM', name: 'Stellar Lumens' },
-    
     
     'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': { symbol: 'XLM', name: 'Stellar Lumens' },
     'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': { symbol: 'USDC', name: 'USD Coin' }, 
@@ -464,9 +428,7 @@ function getTokenSymbolForOracle(tokenAddress: string): { symbol: string, name: 
 
 
 async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
-  try {
-    console.log(`🔍 Fetching price from reflector oracle for ${tokenSymbol}...`);
-    
+  try {    
     if (tokenSymbol === 'USDC') {
       return 1.0; 
     }
@@ -477,13 +439,11 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
       rpcUrl: RPC_URL,
     });
 
-    
     const CRYPTO_ORACLE = 'CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63';
     const FOREX_ORACLE = 'CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W';
     const STELLAR_ORACLE = 'CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP';
 
     if (tokenSymbol === 'XLM') {
-      
       try {
         const result = await client.debug_test_oracle({
           oracle_address: CRYPTO_ORACLE,
@@ -498,7 +458,6 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
           const priceNum = parseFloat(price);
           
           if (priceNum > 0.01 && priceNum < 2.0) { 
-            console.log(`✅ Got XLM price from crypto oracle: $${priceNum}`);
             return priceNum;
           }
         }
@@ -506,13 +465,10 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
         console.warn('Failed to get XLM from crypto oracle:', oracleError);
       }
       
-      
-      console.log('Using fallback XLM price');
       return 0.12;
     }
     
     if (tokenSymbol === 'EURC') {
-      
       try {
         const result = await client.debug_test_oracle({
           oracle_address: FOREX_ORACLE,
@@ -525,9 +481,7 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
         if (result.result && result.result.price) {
           const rate = normalizeOraclePrice(result.result.price.toString(), 7);
           const rateNum = parseFloat(rate);
-          
-          if (rateNum > 0.8 && rateNum < 1.5) { 
-            console.log(`✅ Got EUR/USD rate from forex oracle: $${rateNum}`);
+          if (rateNum > 0.8 && rateNum < 1.5) {
             return rateNum;
           }
         }
@@ -535,16 +489,11 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
         console.warn('Failed to get EUR/USD from forex oracle:', oracleError);
       }
       
-      
-      console.log('Using fallback EUR/USD rate');
       return 1.1;
-    }
-    
+    }    
     return 0;
   } catch (error) {
-    console.error(`❌ Error fetching price from oracle for ${tokenSymbol}:`, error);
-    
-    
+    console.error(`Error fetching price from oracle for ${tokenSymbol}:`, error);
     if (tokenSymbol === 'USDC') return 1.0;
     if (tokenSymbol === 'XLM') return 0.12;
     if (tokenSymbol === 'EURC') return 1.1;
@@ -554,19 +503,12 @@ async function getRealUsdPrice(tokenSymbol: string): Promise<number> {
 
 
 async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Promise<number> {
-  try {
-    console.log(`🔍 Fetching price using reflector oracles for ${tokenSymbol}...`);
-    
-    
+  try {        
     const oraclePrice = await getRealUsdPrice(tokenSymbol);
     
     if (oraclePrice > 0) {
-      console.log(`✅ Got price from reflector oracle for ${tokenSymbol}: $${oraclePrice}`);
       return oraclePrice;
     }
-    
-    console.log(`⚠️ No oracle price found for ${tokenSymbol}, trying contract opportunities...`);
-
     
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
@@ -577,18 +519,12 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
     const opportunities = await client.scan_advanced_opportunities({
       simulate: true
     });
-
-    console.log(`Got ${opportunities.result?.length || 0} opportunities from scan`);
-
     
     if (opportunities.result && Array.isArray(opportunities.result)) {
       for (const opp of opportunities.result) {
         if (opp.base_opportunity?.pair) {
-          const pair = opp.base_opportunity.pair;
-          
-          
-          let priceData: { price: string, symbol: string } | null = null;
-          
+          const pair = opp.base_opportunity.pair;          
+          let priceData: { price: string, symbol: string } | null = null;          
           if (pair.base_asset_symbol === tokenSymbol) {
             priceData = {
               price: opp.base_opportunity.stablecoin_price.toString(),
@@ -604,36 +540,25 @@ async function fetchTokenUsdPrice(tokenSymbol: string, tokenAddress: string): Pr
           
           if (priceData) {
             const normalizedPrice = parseFloat(normalizeOraclePrice(priceData.price, 7));
-            
             if (tokenSymbol === 'XLM' && normalizedPrice > 0.01 && normalizedPrice < 2.0) {
-              console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
               return normalizedPrice;
             }
             if (tokenSymbol === 'USDC' && normalizedPrice > 0.9 && normalizedPrice < 1.1) {
-              console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
               return normalizedPrice;
             }
             if (tokenSymbol === 'EURC' && normalizedPrice > 0.8 && normalizedPrice < 1.5) {
-              console.log(`✅ Using reasonable opportunity price for ${tokenSymbol}: $${normalizedPrice.toFixed(6)}`);
               return normalizedPrice;
             }
-            console.log(`❌ Opportunity price for ${tokenSymbol} seems unreasonable: $${normalizedPrice}, using oracle fallback`);
           }
         }
       }
     }
 
-    // Final fallback to oracle prices
     const fallbackPrice = await getRealUsdPrice(tokenSymbol);
-    console.log(`🔄 Using oracle fallback for ${tokenSymbol}: $${fallbackPrice}`);
     return fallbackPrice;
-
   } catch (error) {
-    console.error(`❌ Error fetching price for ${tokenSymbol}:`, error);
-    
-    // Final fallback to default oracle prices
+    console.error(`Error fetching price for ${tokenSymbol}:`, error); 
     const finalFallback = await getRealUsdPrice(tokenSymbol);
-    console.log(`🔄 Using final oracle fallback for ${tokenSymbol}: $${finalFallback}`);
     return finalFallback;
   }
 }
@@ -653,9 +578,6 @@ async function getUserPerformanceMetrics(userAddress: string, days: number = 30)
       simulate: true
     });
 
-    console.log('Raw performance metrics result:', safeStringify(result.result));
-
-    // Format the performance metrics data with proper price normalization
     const metrics = {
       total_trades: result.result.total_trades || 0,
       successful_trades: result.result.successful_trades || 0,
@@ -664,7 +586,6 @@ async function getUserPerformanceMetrics(userAddress: string, days: number = 30)
       success_rate_bps: result.result.success_rate_bps || 0,
       avg_profit_per_trade: normalizeOraclePrice(result.result.avg_profit_per_trade?.toString() || '0', 7),
       period_days: result.result.period_days || days,
-      // Calculate additional derived metrics
       success_rate: result.result.success_rate_bps ? (result.result.success_rate_bps / 100).toFixed(2) : '0.00',
       win_rate: result.result.total_trades > 0 ? ((result.result.successful_trades / result.result.total_trades) * 100).toFixed(2) : '0.00'
     };
@@ -694,7 +615,6 @@ async function checkUserInitialized(userAddress: string): Promise<NextResponse> 
       rpcUrl: RPC_URL,
     });
 
-    // Try to get user config - if it throws, user is not initialized
     const result = await client.get_user_config({
       user: userAddress
     }, {
@@ -710,9 +630,7 @@ async function checkUserInitialized(userAddress: string): Promise<NextResponse> 
     });
 
   } catch (error) {
-    // If we get an error, the user is likely not initialized
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
     if (errorMessage.includes('not initialized') || errorMessage.includes('not found')) {
       return NextResponse.json({
         success: true,
@@ -723,7 +641,6 @@ async function checkUserInitialized(userAddress: string): Promise<NextResponse> 
       });
     }
 
-    // Other errors
     return NextResponse.json({
       success: false,
       error: `Error checking user initialization: ${errorMessage}`
@@ -739,17 +656,7 @@ async function depositUserFunds(
   assetCode?: string
 ): Promise<NextResponse> {
   try {
-    console.log('Starting deposit preparation:', {
-      userAddress,
-      amount,
-      isNative,
-      tokenAddress,
-      assetCode
-    });
-
-    // Create RPC server for transaction preparation
     const server = new SorobanRpc.Server(RPC_URL);
-
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -757,19 +664,13 @@ async function depositUserFunds(
       publicKey: userAddress,
     });
 
-    // Use proper token contract address
     let finalTokenAddress: string;
     if (isNative) {
       const nativeAsset = Asset.native();
       finalTokenAddress = nativeAsset.contractId(Networks.TESTNET);
-      console.log('Using native XLM contract address:', finalTokenAddress);
     } else {
-      // For non-native assets like USDC, we need to convert to Stellar Asset Contract (SAC) address
       try {
-        // Use the provided asset code or infer from common tokens
-        let code = assetCode || 'USDC' || 'EURC'; // Default to USDC if not specified
-
-        // Map known issuer addresses to asset codes
+        let code = assetCode || 'USDC' || 'EURC';
         const knownAssets: { [key: string]: string } = {
           'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',
           'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC',  
@@ -779,26 +680,14 @@ async function depositUserFunds(
           code = knownAssets[tokenAddress];
         }
         
-        console.log(`Creating asset with code: ${code}, issuer: ${tokenAddress}`);
         const asset = new Asset(code, tokenAddress);
         finalTokenAddress = asset.contractId(Networks.TESTNET);
-        console.log('Using asset contract address for', code + ':', finalTokenAddress);
-        console.log('Original issuer address:', tokenAddress);
       } catch (assetError) {
         console.error('Error creating asset contract:', assetError);
-        // Fallback - use the address as-is (might be a direct contract address)
         finalTokenAddress = tokenAddress;
-        console.log('Using direct contract address as fallback:', finalTokenAddress);
       }
     }
 
-    console.log('Calling client.deposit_user_funds with:', {
-      user: userAddress,
-      token_address: finalTokenAddress,
-      amount: amount
-    });
-
-    // Build the transaction (simulate to get initial XDR)
     const result = await client.deposit_user_funds({
       user: userAddress,
       token_address: finalTokenAddress,
@@ -806,19 +695,12 @@ async function depositUserFunds(
     }, {
       simulate: true
     });
-
-    console.log('Client call successful, got result');
-
-    // Get the initial transaction XDR
     const initialTx = result.toXDR();
-    console.log('Initial transaction XDR length:', initialTx.length);
     
-    // Parse the transaction and prepare it with proper footprint and resources
     let transaction, preparedTransaction;
     
     try {
       transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
-      console.log('Successfully parsed initial transaction');
     } catch (parseError) {
       console.error('Error parsing initial transaction XDR:', parseError);
       throw new Error(`Failed to parse initial transaction: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
@@ -826,28 +708,14 @@ async function depositUserFunds(
 
     try {
       preparedTransaction = await server.prepareTransaction(transaction);
-      console.log('Successfully prepared transaction');
     } catch (prepareError) {
       console.error('Error preparing transaction:', prepareError);
       throw new Error(`Failed to prepare transaction: ${prepareError instanceof Error ? prepareError.message : 'Unknown error'}`);
     }
 
     const finalXdr = preparedTransaction.toXDR();
-    console.log('Final deposit transaction XDR length:', finalXdr.length);
-
-    // Validate the XDR we're about to send
     try {
-      console.log('Validating prepared deposit XDR...');
       const testParse = TransactionBuilder.fromXDR(finalXdr, Networks.TESTNET);
-      console.log('Deposit XDR validation successful - can be parsed correctly');
-      
-      // Log XDR structure for debugging
-      console.log('Prepared deposit XDR first 200 chars:', finalXdr.substring(0, 200));
-      console.log('Prepared deposit XDR details:', {
-        fee: testParse.fee,
-        operationsCount: testParse.operations.length,
-        networkPassphrase: testParse.networkPassphrase
-      });
       
     } catch (validateError) {
       console.error('CRITICAL: Prepared deposit XDR is invalid!', validateError);
@@ -864,8 +732,6 @@ async function depositUserFunds(
 
   } catch (error) {
     console.error('Error preparing deposit transaction:', error);
-    
-    // Provide more specific error handling
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     if (errorMessage.includes('MissingValue') || errorMessage.includes('contract instance')) {
@@ -886,7 +752,6 @@ async function depositUserFunds(
   }
 }
 
-// Similarly update withdrawUserFunds (assuming similar structure)
 async function withdrawUserFunds(
   userAddress: string,
   tokenAddress: string,
@@ -895,16 +760,7 @@ async function withdrawUserFunds(
   assetCode?: string
 ): Promise<NextResponse> {
   try {
-    console.log('Starting withdraw preparation:', {
-      userAddress,
-      amount,
-      isNative,
-      tokenAddress
-    });
-
-    // Create RPC server for transaction preparation
     const server = new SorobanRpc.Server(RPC_URL);
-
     const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
@@ -912,48 +768,30 @@ async function withdrawUserFunds(
       publicKey: userAddress,
     });
 
-    // Use proper token contract address
     let finalTokenAddress: string;
     if (isNative) {
       const nativeAsset = Asset.native();
       finalTokenAddress = nativeAsset.contractId(Networks.TESTNET);
-      console.log('Using native XLM contract address for withdrawal:', finalTokenAddress);
     } else {
-      // For non-native assets like USDC, we need to convert to Stellar Asset Contract (SAC) address
       try {
-        // Use the provided asset code or infer from common tokens
-        let code = assetCode || 'USDC'; // Default to USDC if not specified
-        
-        // Map known issuer addresses to asset codes
+        let code = assetCode || 'USDC';
         const knownAssets: { [key: string]: string } = {
           'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'USDC',
-          'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC', // New EURC address
+          'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO': 'EURC',
         };
         
         if (knownAssets[tokenAddress]) {
           code = knownAssets[tokenAddress];
         }
         
-        console.log(`Creating asset for withdrawal with code: ${code}, issuer: ${tokenAddress}`);
         const asset = new Asset(code, tokenAddress);
         finalTokenAddress = asset.contractId(Networks.TESTNET);
-        console.log('Using asset contract address for', code, 'withdrawal:', finalTokenAddress);
-        console.log('Original issuer address:', tokenAddress);
       } catch (assetError) {
         console.error('Error creating asset contract for withdrawal:', assetError);
-        // Fallback - use the address as-is (might be a direct contract address)
         finalTokenAddress = tokenAddress;
-        console.log('Using direct contract address as fallback for withdrawal:', finalTokenAddress);
       }
     }
 
-    console.log('Calling client.withdraw_user_funds with:', {
-      user: userAddress,
-      token_address: finalTokenAddress,
-      amount: amount
-    });
-
-    // Build the transaction (simulate to get initial XDR)
     const result = await client.withdraw_user_funds({
       user: userAddress,
       token_address: finalTokenAddress,
@@ -962,18 +800,11 @@ async function withdrawUserFunds(
       simulate: true
     });
 
-    console.log('Client call successful, got result');
-
-    // Get the initial transaction XDR
-    const initialTx = result.toXDR();
-    console.log('Initial transaction XDR length:', initialTx.length);
-    
-    // Parse the transaction and prepare it with proper footprint and resources
+    const initialTx = result.toXDR();    
     let transaction, preparedTransaction;
     
     try {
       transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
-      console.log('Successfully parsed initial transaction');
     } catch (parseError) {
       console.error('Error parsing initial transaction XDR:', parseError);
       throw new Error(`Failed to parse initial transaction: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
@@ -981,29 +812,14 @@ async function withdrawUserFunds(
 
     try {
       preparedTransaction = await server.prepareTransaction(transaction);
-      console.log('Successfully prepared transaction');
     } catch (prepareError) {
       console.error('Error preparing transaction:', prepareError);
       throw new Error(`Failed to prepare transaction: ${prepareError instanceof Error ? prepareError.message : 'Unknown error'}`);
     }
 
     const finalXdr = preparedTransaction.toXDR();
-    console.log('Final withdraw transaction XDR length:', finalXdr.length);
-
-    // Validate the XDR we're about to send
     try {
-      console.log('Validating prepared withdraw XDR...');
-      const testParse = TransactionBuilder.fromXDR(finalXdr, Networks.TESTNET);
-      console.log('Withdraw XDR validation successful - can be parsed correctly');
-      
-      // Log XDR structure for debugging
-      console.log('Prepared withdraw XDR first 200 chars:', finalXdr.substring(0, 200));
-      console.log('Prepared withdraw XDR details:', {
-        fee: testParse.fee,
-        operationsCount: testParse.operations.length,
-        networkPassphrase: testParse.networkPassphrase
-      });
-      
+      const testParse = TransactionBuilder.fromXDR(finalXdr, Networks.TESTNET);            
     } catch (validateError) {
       console.error('CRITICAL: Prepared withdraw XDR is invalid!', validateError);
       throw new Error(`Generated invalid withdraw XDR: ${validateError instanceof Error ? validateError.message : 'Unknown validation error'}`);
@@ -1019,8 +835,6 @@ async function withdrawUserFunds(
 
   } catch (error) {
     console.error('Error preparing withdrawal transaction:', error);
-    
-    // Provide more specific error handling
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     if (errorMessage.includes('MissingValue') || errorMessage.includes('contract instance')) {
@@ -1053,7 +867,6 @@ async function getPairs(): Promise<NextResponse> {
       simulate: true
     });
 
-    // Format the pairs data for frontend consumption
     const formattedPairs = result.result.map((pair: any) => ({
       stablecoin_symbol: pair.stablecoin_symbol,
       fiat_symbol: pair.fiat_symbol,
@@ -1061,8 +874,6 @@ async function getPairs(): Promise<NextResponse> {
       target_peg: pair.target_peg?.toString(),
       deviation_threshold_bps: pair.deviation_threshold_bps
     }));
-
-    console.log('✅ Pairs fetched successfully:', safeStringify(formattedPairs));
 
     return NextResponse.json({
       success: true,
@@ -1097,10 +908,7 @@ async function getBotPerformanceMetrics(days: number = 30): Promise<NextResponse
       simulate: true
     });
 
-    console.log('Raw bot performance metrics result:', safeStringify(result.result));
-
-    // Format the bot performance metrics data and handle BigInt serialization
-    const metrics = {
+      const metrics = {
       total_trades: result.result.total_trades || 0,
       successful_trades: result.result.successful_trades || 0,
       total_profit: result.result.total_profit?.toString() || '0',
@@ -1129,22 +937,17 @@ async function getBotPerformanceMetrics(days: number = 30): Promise<NextResponse
   }
 }
 
-// Helper function to normalize oracle prices
 function normalizeOraclePrice(rawPrice: string | bigint, decimals: number = 7): string {
   const priceNum = typeof rawPrice === 'string' ? parseFloat(rawPrice) : Number(rawPrice);
   if (priceNum === 0 || isNaN(priceNum)) return '0.000000';
-  
   const normalizedPrice = priceNum / Math.pow(10, decimals);
-  return normalizedPrice.toFixed(6); // Show up to 6 decimal places for precision
+  return normalizedPrice.toFixed(6); 
 }
 
-// Helper function to parse Stellar Contract Values (SCV)
 function parseScvValue(scvData: any): any {
   if (!scvData || !scvData._switch) {
-    console.log('parseScvValue: No scvData or _switch found');
     return null;
   }
-
 
   switch (scvData._switch.name) {
     case 'scvVec':
@@ -1196,7 +999,6 @@ function parseScvValue(scvData: any): any {
         if (scvData._value._switch?.name === 'scAddressTypeContract') {
           const contractId = scvData._value._value;
           if (contractId && contractId.data) {
-            // Convert raw bytes to hex string
             const hexData = Buffer.from(contractId.data).toString('hex').toUpperCase();
             const address = `CONTRACT_${hexData}`;
             return address;
@@ -1204,76 +1006,51 @@ function parseScvValue(scvData: any): any {
         } else if (scvData._value._switch?.name === 'scAddressTypeAccount') {
           const accountId = scvData._value._value;
           if (accountId && accountId._value && accountId._value.data) {
-            // Convert raw bytes to hex string
             const hexData = Buffer.from(accountId._value.data).toString('hex').toUpperCase();
             const address = `ACCOUNT_${hexData}`;
             return address;
           }
         }
       }
-      console.log('parseScvValue: Unknown address type');
       return 'UNKNOWN_ADDRESS';
-    
     default:
       console.warn('parseScvValue: Unknown SCV type:', scvData._switch.name);
       return scvData._value || null;
   }
 }
 
-// Helper function to format parsed opportunity data
 function formatOpportunityData(opportunity: any): any {
   if (!opportunity || typeof opportunity !== 'object') {
-    console.log('formatOpportunityData: opportunity is null, undefined, or not an object');
     return null;
   }
-
-  console.log('formatOpportunityData: processing opportunity keys:', Object.keys(opportunity));
-
-  // Helper function to convert Buffer to string
   const bufferToString = (bufferObj: any): string => {
-    console.log('bufferToString input:', typeof bufferObj, bufferObj);
     
-    // Handle Node.js Buffer objects directly
     if (Buffer.isBuffer(bufferObj)) {
       const result = bufferObj.toString('utf8');
-      console.log('bufferToString converted Buffer directly:', result);
       return result;
     }
     
-    // Handle JSON-serialized Buffer objects with {type: 'Buffer', data: [...]}
     if (bufferObj && typeof bufferObj === 'object' && bufferObj.type === 'Buffer' && Array.isArray(bufferObj.data)) {
       const result = Buffer.from(bufferObj.data).toString('utf8');
-      console.log('bufferToString converted JSON Buffer:', result);
       return result;
     }
     
     if (typeof bufferObj === 'string') {
       return bufferObj;
     }
-    
-    console.log('bufferToString fallback:', bufferObj);
     return bufferObj || '';
   };
 
   try {
-    // Based on the actual parsed SCV structure from the logs
     const baseOpp = opportunity.base_opportunity;
-    
     if (!baseOpp || typeof baseOpp !== 'object') {
-      console.log('formatOpportunityData: no base_opportunity found or invalid type, available keys:', Object.keys(opportunity));
       return null;
     }
-
-    console.log('formatOpportunityData: base_opportunity keys:', Object.keys(baseOpp));
     
-    // Get pair data
     const pair = baseOpp.pair;
     if (!pair || typeof pair !== 'object') {
-      console.log('formatOpportunityData: no pair found in base_opportunity');
       return null;
     }
-
-    console.log('formatOpportunityData: pair keys:', Object.keys(pair));
 
     const formatted = {
       base_opportunity: {
@@ -1304,7 +1081,6 @@ function formatOpportunityData(opportunity: any): any {
       }))
     };
 
-    console.log('formatOpportunityData: successfully formatted opportunity');
     return formatted;
   } catch (error) {
     console.error('formatOpportunityData: Error formatting opportunity data:', error);
@@ -1321,84 +1097,34 @@ async function scanAdvancedOpportunities(): Promise<NextResponse> {
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
       rpcUrl: RPC_URL,
-    });
-
-    console.log('Calling scan_advanced_opportunities...');
-    
+    });    
     const assembledTx = await client.scan_advanced_opportunities({
       simulate: true
     });
 
-    console.log('Raw scan_advanced_opportunities result structure:', Object.keys(assembledTx));
-    
     let opportunities: any[] = [];
 
     try {
-      // Access the simulation result from the assembled transaction
       if (assembledTx && typeof assembledTx === 'object') {
-        console.log('Assembled transaction keys:', Object.keys(assembledTx));
         
-        // The result is in the simulation property
         if ((assembledTx as any).simulation && (assembledTx as any).simulation.result) {
-          console.log('Found simulation result');
           const simulationResult = (assembledTx as any).simulation.result;
-          console.log('Found opportunities from simulation.result:', simulationResult ? 'YES' : 'NO');
-          console.log('Simulation result details:', safeStringify(simulationResult));
-          
-          // Parse the SCV data structure - check retval for the vector
           if (simulationResult && simulationResult.retval && simulationResult.retval._switch?.name === 'scvVec') {
             const rawOpportunities = parseScvValue(simulationResult.retval);
-            
-            if (rawOpportunities) {
-              console.log('Raw opportunities length/keys:', Array.isArray(rawOpportunities) ? rawOpportunities.length : Object.keys(rawOpportunities));
-            }
-            
-            console.log('Parsed raw opportunities:', rawOpportunities?.length || 0);
-            
+                        
             if (Array.isArray(rawOpportunities)) {              
-              // Apply the formatting function to convert from parsed SCV to proper structure
               opportunities = rawOpportunities.map((opp, index) => {
-                
                 const formatted = formatOpportunityData(opp);
-                
                 return formatted;
               }).filter(Boolean);
-              
-              console.log('Successfully formatted opportunities count:', opportunities.length);
-              console.log('Filtered out opportunities count:', rawOpportunities.length - opportunities.length);
-            } else {
-              console.log('rawOpportunities is not an array, type:', typeof rawOpportunities);
-            }
-          } else {
-            console.log('No scvVec found in simulation result retval or simulationResult/retval is null');
-            if (simulationResult) {
-              console.log('SimulationResult keys:', Object.keys(simulationResult));
-              if (simulationResult.retval) {
-                console.log('Retval keys:', Object.keys(simulationResult.retval));
-                console.log('Retval _switch name:', simulationResult.retval._switch?.name);
-              }
-            }
-          }
-        } else {
-          console.log('No simulation result found in assembled transaction');
-          if ((assembledTx as any).simulation) {
-            console.log('Simulation object keys:', Object.keys((assembledTx as any).simulation));
-          }
-        }
+            } 
+          } 
+        } 
       }
-      
-      if (opportunities.length === 0) {
-        console.log('No opportunities found - this might be normal if no arbitrage opportunities exist');
-      }
-
     } catch (parseError) {
       console.error('Error processing opportunities data:', parseError);
-      console.log('Using empty opportunities array due to processing error');
       opportunities = [];
     }
-
-    console.log('Final opportunities count:', opportunities.length);
-
     return NextResponse.json({
       success: true,
       data: {
@@ -1424,26 +1150,15 @@ async function executeUserArbitrage(
   venueAddress: string
 ): Promise<NextResponse> {
   try {
-    console.log('Preparing execute_user_arbitrage transaction for user signing:', {
-      user: userAddress,
-      tradeAmount: tradeAmount,
-    });
-
-    // Create RPC server for transaction preparation
     const server = new SorobanRpc.Server(RPC_URL);
-    
-    // Initialize the client with user address
-    const client = new Client({
+      const client = new Client({
       contractId: CONTRACT_ADDRESS,
       networkPassphrase: Networks.TESTNET,
       rpcUrl: RPC_URL,
       publicKey: userAddress,
     });
 
-    // Convert trade amount to proper format (scaled by 10^7)
     const scaledTradeAmount = BigInt(Math.floor(parseFloat(tradeAmount) * 1e7));
-
-    // Helper function to safely convert string to BigInt with scaling
     const toBigInt = (value: string | number, scale: number = 1e7): bigint => {
       if (!value || isNaN(parseFloat(value.toString()))) {
         return BigInt(0);
@@ -1451,7 +1166,6 @@ async function executeUserArbitrage(
       return BigInt(Math.floor(parseFloat(value.toString()) * scale));
     };
 
-    // Map asset symbols to correct SAC addresses
     const getCorrectAssetAddress = (symbol: string, currentAddress: string): string => {
       if (currentAddress && currentAddress !== "UNKNOWN_ADDRESS" && currentAddress !== "") {
         return currentAddress;
@@ -1467,8 +1181,6 @@ async function executeUserArbitrage(
       if (!sacAddress) {
         throw new Error(`Unknown asset symbol: ${symbol}. Please add SAC address mapping.`);
       }
-
-      console.log(`Mapped ${symbol} to SAC address: ${sacAddress}`);
       return sacAddress;
     };
 
@@ -1482,7 +1194,6 @@ async function executeUserArbitrage(
       opportunity.base_opportunity.pair.quote_asset_address
     );
 
-    // Convert opportunity data to proper contract format
     const contractOpportunity = {
       base_opportunity: {
         pair: {
@@ -1511,17 +1222,6 @@ async function executeUserArbitrage(
         name: venue.name
       }))
     };
-
-    console.log('📋 Contract opportunity with correct SAC addresses:', {
-      user: userAddress,
-      trade_amount: scaledTradeAmount.toString(),
-      base_asset_address: baseAssetAddress,
-      quote_asset_address: quoteAssetAddress,
-      venue_address: venueAddress
-    });
-
-    // ✅ FIX: Build transaction without simulation to avoid auth errors
-    console.log('Building transaction without simulation (auth errors expected during simulation)...');
     
     const assembledTx = await client.execute_user_arbitrage({
       user: userAddress,
@@ -1529,30 +1229,20 @@ async function executeUserArbitrage(
       trade_amount: scaledTradeAmount,
       venue_address: venueAddress
     }, {
-      simulate: false  // ✅ Don't simulate to avoid auth errors
+      simulate: false
     });
 
-    console.log('Client call successful, got assembled transaction');
-
-    // Manually simulate to capture auth errors (expected behavior)
     try {
       await assembledTx.simulate();
     } catch (simulateError) {
-      console.log('⚠️ Simulation failed as expected (auth required):', 
+      console.log('Simulation failed as expected (auth required):', 
         simulateError instanceof Error ? simulateError.message : 'Unknown error');
-      // This is expected for auth-required transactions - continue with XDR extraction
     }
 
-    // Get the transaction XDR for user signing
-    const initialTx = assembledTx.toXDR();
-    console.log('Initial transaction XDR length:', initialTx.length);
-    
-    // Parse the transaction and prepare it with proper footprint and resources
+    const initialTx = assembledTx.toXDR();    
     let transaction, preparedTransaction;
-    
     try {
       transaction = TransactionBuilder.fromXDR(initialTx, Networks.TESTNET);
-      console.log('Successfully parsed initial transaction');
     } catch (parseError) {
       console.error('Error parsing initial transaction XDR:', parseError);
       throw new Error(`Failed to parse initial transaction: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
@@ -1560,22 +1250,17 @@ async function executeUserArbitrage(
 
     try {
       preparedTransaction = await server.prepareTransaction(transaction);
-      console.log('Successfully prepared transaction');
     } catch (prepareError) {
       console.error('Error preparing transaction:', prepareError);
-      
-      // ✅ Check if this is the expected auth error during preparation
       const errorMessage = prepareError instanceof Error ? prepareError.message : String(prepareError);
       
       if (errorMessage.includes('Error(Auth, InvalidAction)') || errorMessage.includes('require_auth')) {
-        console.log('⚠️ Auth error during preparation - this is expected. Transaction will work when user signs it.');
-        
-        // Return the unprepared transaction - user signing will provide the auth
-        return NextResponse.json({
+        console.log('Auth error during preparation - this is expected. Transaction will work when user signs it.');
+          return NextResponse.json({
           success: true,
           data: { 
             message: 'Arbitrage transaction prepared for signing (auth will be provided by wallet)',
-            transactionXdr: initialTx,  // Use unprepared XDR
+            transactionXdr: initialTx,
             estimatedProfit: opportunity.base_opportunity.estimated_profit,
             authNote: 'Transaction requires user authentication which will be provided when you sign it',
             tradeDetails: {
@@ -1593,17 +1278,8 @@ async function executeUserArbitrage(
     }
 
     const finalXdr = preparedTransaction.toXDR();
-    console.log('Final arbitrage transaction XDR length:', finalXdr.length);
-
-    // Calculate estimated fees
     const estimatedFee = preparedTransaction.fee;
     const baseFee = parseInt(preparedTransaction.fee) / 10000000;
-
-    console.log('💰 Transaction prepared for signing:', {
-      feeInStroops: estimatedFee,
-      feeInXLM: baseFee.toFixed(7),
-      tradeAmount: scaledTradeAmount.toString()
-    });
 
     return NextResponse.json({
       success: true,
@@ -1626,7 +1302,7 @@ async function executeUserArbitrage(
     });
 
   } catch (error) {
-    console.error('❌ Error preparing arbitrage transaction:', error);
+    console.error('Error preparing arbitrage transaction:', error);
     
     const errorMessage = error instanceof Error ? error.message : String(error);
     
@@ -1648,42 +1324,27 @@ async function approveRouterSpending(
   routerAddress: string
 ): Promise<NextResponse> {
   try {
-    console.log('Creating token approval with Stellar SDK Contract:', {
-      userAddress,
-      tokenAddress,
-      amount,
-      routerAddress
-    });
 
     const server = new SorobanRpc.Server(RPC_URL);
     const scaledAmount = BigInt(Math.floor(parseFloat(amount) * 1e7));
     const expirationLedger = 1000000;
-
-    // ✅ Get source account
     const sourceAccount = await server.getAccount(userAddress);
-
-    // ✅ Use Stellar SDK Contract class - this is the correct way
     const tokenContract = new Contract(tokenAddress);
-    
-    // ✅ Create the approve operation using Contract.call()
     const approveOperation = tokenContract.call(
       'approve',
-      Address.fromString(userAddress).toScVal(),    // from
-      Address.fromString(routerAddress).toScVal(),  // spender
-      nativeToScVal(scaledAmount, { type: 'i128' }), // amount
-      nativeToScVal(expirationLedger, { type: 'u32' }) // expiration
+      Address.fromString(userAddress).toScVal(),    
+      Address.fromString(routerAddress).toScVal(),  
+      nativeToScVal(scaledAmount, { type: 'i128' }), 
+      nativeToScVal(expirationLedger, { type: 'u32' })
     );
 
-    // ✅ Build transaction with the correct operation
     const transaction = new TransactionBuilder(sourceAccount, {
       fee: '1000000',
       networkPassphrase: Networks.TESTNET,
     })
-    .addOperation(approveOperation) // ✅ This returns proper Operation instance
+    .addOperation(approveOperation)
     .setTimeout(300)
     .build();
-
-    console.log('Preparing token approval transaction...');
     const preparedTransaction = await server.prepareTransaction(transaction);
 
     return NextResponse.json({

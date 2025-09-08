@@ -1,7 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useWallet } from '../../hooks/useWallet'
-import { X, TrendingUp, TrendingDown } from 'lucide-react'
 import type { StakeInfo } from '../../daobindings/src'
 
 interface Props {
@@ -27,7 +26,6 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
     }
   }, [isOpen, address])
 
-  // Cleanup
   useEffect(() => {
     return () => {
       setError(null)
@@ -98,10 +96,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
     setIsLoading(true)
     
     try {
-      console.log(`Preparing ${mode} transaction for`, amt, 'KALE')
       const action = mode === 'stake' ? 'stake_kale' : 'unstake_kale'
-      
-      // Step 1: Prepare transaction
       const prepareResponse = await fetch('/api/dao', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,22 +108,16 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
       })
       
       const prepareData = await prepareResponse.json()
-      console.log('Prepare response:', prepareData)
       
       if (!prepareData.success) {
         setError(prepareData.error || `Failed to prepare ${mode} transaction`)
         return
       }
-
-      // Step 2: Sign transaction
       const signResult = await walletKit.signTransaction(prepareData.data.transactionXdr, {
         address,
         networkPassphrase: 'Test SDF Network ; September 2015',
       })
 
-      console.log('Transaction signed, submitting...')
-
-      // Step 3: Submit signed transaction using contract API (same as deposit/withdraw)
       const submitResponse = await fetch('/api/contract/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -136,22 +125,20 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
       })
       
       const submitData = await submitResponse.json()
-      console.log('Submit response:', submitData)
       
       if (submitData.success) {
         const action = mode === 'stake' ? 'Staked' : 'Unstaked'
         if (showMessage) {
           if (submitData.data.status === 'SUCCESS') {
-            showMessage(`✅ ${action} ${amt} KALE successfully!`)
+            showMessage(` ${action} ${amt} KALE successfully!`)
           } else {
-            showMessage(`✅ ${action} transaction submitted successfully! Hash: ${submitData.data.hash}`)
+            showMessage(`${action} transaction submitted successfully! Hash: ${submitData.data.hash}`)
           }
         }
         
         setAmount('')
         await fetchStakeInfo()
         
-        // Close modal after short delay
         setTimeout(() => {
           onClose()
         }, 2000)
@@ -183,7 +170,7 @@ const StakeModal: React.FC<Props> = ({ isOpen, onClose, onStakeUpdate, showMessa
 
   const canUnstake = () => {
     if (!stakeInfo) return false
-    const cooldownPeriod = 7 * 24 * 60 * 60 // 7 days
+    const cooldownPeriod = 7 * 24 * 60 * 60
     const currentTime = Math.floor(Date.now() / 1000)
     const lastStakeUpdate = typeof stakeInfo.last_stake_update === 'bigint' 
       ? Number(stakeInfo.last_stake_update) 
